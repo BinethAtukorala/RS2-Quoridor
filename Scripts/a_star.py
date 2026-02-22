@@ -32,6 +32,10 @@ def calculate_heuristic(pos1: Tuple[int, int], pos2: Tuple[int, int]) -> float:
     x2, y2 = pos2
     return abs(x1-x2) + abs(y1-y2)
 
+def calculate_heuristic_y(pos1: Tuple[int, int], posy: int) -> float:
+    _, y1 = pos1
+    return abs(y1 - posy)
+
 # Get all valid neighboring cells in the grid
 def get_valid_neighbors(grid: np.ndarray, position: Tuple[int, int]) -> List[Tuple[int, int]]:
     x, y = position
@@ -69,7 +73,7 @@ def find_path(grid: np.ndarray, start: Tuple[int, int],
     start_node = create_node(
         position=start,
         g=0,
-        h=calculate_heuristic(start, goal)
+        h=calculate_heuristic_y(start, goal[1])
     )
 
     # Initialise open and closed sets
@@ -83,7 +87,7 @@ def find_path(grid: np.ndarray, start: Tuple[int, int],
         current_node = open_dict[current_pos]
 
         # Check if goal reached
-        if current_pos == goal:
+        if current_pos[1] == goal[1]:
             return reconstruct_path(current_node)
         
         closed_set.add(current_pos)
@@ -102,7 +106,7 @@ def find_path(grid: np.ndarray, start: Tuple[int, int],
                 neighbor = create_node(
                     position=neighbor_pos,
                     g=tentative_g,
-                    h=calculate_heuristic(neighbor_pos, goal),
+                    h=calculate_heuristic_y(neighbor_pos, goal[1]),
                     parent=current_node
                 )
                 heapq.heappush(open_list, (neighbor['f'], neighbor_pos))
@@ -118,10 +122,8 @@ def find_path(grid: np.ndarray, start: Tuple[int, int],
 
 import matplotlib.pyplot as plt
 
+# Visualise path
 def visualize_path(grid: np.ndarray, path: List[Tuple[int, int]]):
-    """
-    Visualize the grid and found path.
-    """
     plt.figure(figsize=(10, 10))
     
     # Flip x and y
@@ -149,22 +151,31 @@ def visualize_path(grid: np.ndarray, path: List[Tuple[int, int]]):
     plt.show()
 
 
+if __name__ == "__main__":
+    # Add some walls
+    grid[0, 1] = 3
+    grid[1, 1] = 3  # vis only
+    grid[2, 1] = 3
 
-# Add some walls
-grid[0, 1] = 3
-grid[1, 1] = 3
-grid[2, 1] = 3
-grid[3, 2] = 3
-grid[3, 3] = 3
-grid[3, 4] = 3
+    grid[3, 2] = 3
+    grid[3, 3] = 3  # vis only
+    grid[3, 4] = 3
 
-start_pos = 0, 0
-goal_pos = 0, 8
+    grid[4, 3] = 3
+    grid[5, 3] = 3  # vis only
+    grid[6, 3] = 3
 
-path = find_path(grid, start_pos, goal_pos)
-if path:
-    print(f"Path found with {len(path)} steps!")
-    visualize_path(grid, path)
+    grid[6, 5] = 3
+    grid[7, 5] = 3  # vis only
+    grid[8, 5] = 3
 
-else:
-    print("No path found!")
+    start_pos = 0, 0
+    goal_pos = 0, 8
+
+    path = find_path(grid, start_pos, goal_pos)
+    if path:
+        print(f"Path found with {len(path)} steps!")
+        visualize_path(grid, path)
+
+    else:
+        print("No path found!")
