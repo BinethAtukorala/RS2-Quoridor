@@ -4,7 +4,7 @@ from rclpy.node import Node
 from std_msgs.msg import String
 
 
-class GameState(Node):
+class UserInterface(Node):
 
     def __init__(self):
         super().__init__('game_state')
@@ -24,11 +24,11 @@ class GameState(Node):
 def main(args=None):
     rclpy.init(args=args)
 
-    game_state = GameState()
+    user_interface = UserInterface()
 
-    rclpy.spin(game_state)
+    rclpy.spin(user_interface)
 
-    game_state.destroy_node()
+    user_interface.destroy_node()
     rclpy.shutdown()
 
 
