@@ -29,11 +29,37 @@ class CircleDetectorNode(Node):
         cv2.namedWindow("Camera View (Circles)", cv2.WINDOW_AUTOSIZE)
         cv2.namedWindow("Top-Down Walls", cv2.WINDOW_AUTOSIZE)
 
-        # 4. Setup RealSense
+        # # 4. Setup RealSense
+        # self.pipeline = rs.pipeline()
+        # self.config = rs.config()
+        # self.config.enable_stream(rs.stream.color, 1280, 720, rs.format.bgr8, 30)
+        # self.pipeline.start(self.config)
+
+        # 4. Setup RealSense (MODIFIED FOR BAG SUPPORT)
         self.pipeline = rs.pipeline()
         self.config = rs.config()
-        self.config.enable_stream(rs.stream.color, 1280, 720, rs.format.bgr8, 30)
-        self.pipeline.start(self.config)
+
+        # Add bag file support
+        self.declare_parameter('bag_file', '')
+        bag_file = self.get_parameter('bag_file').get_parameter_value().string_value
+
+        self.is_bag = bag_file != ""
+
+        if self.is_bag:
+            self.get_logger().info(f"Using BAG file: {bag_file}")
+            rs.config.enable_device_from_file(self.config, bag_file, repeat_playback=False)
+        else:
+            self.get_logger().info("Using LIVE camera")
+            self.config.enable_stream(rs.stream.color, 1280, 720, rs.format.bgr8, 30)
+
+        # Start pipeline
+        self.profile = self.pipeline.start(self.config)
+
+        # Fix playback timing
+        if self.is_bag:
+            device = self.profile.get_device()
+            playback = device.as_playback()
+            playback.set_real_time(False)
         
         self.get_logger().info("Circle Detector Node started with RealSense")
         
@@ -76,178 +102,105 @@ class CircleDetectorNode(Node):
         rect[3] = corners[np.argmax(diff)]   # bottom-left
         return rect
 
-    # def detect_circles_and_walls(self, warped_img):
-    #     hsv = cv2.cvtColor(warped_img, cv2.COLOR_BGR2HSV)
-
-    #     # White circle mask
-    #     lower_white = np.array([0, 0, 200])
-    #     upper_white = np.array([180, 50, 255])
-    #     white_mask = cv2.inRange(hsv, lower_white, upper_white)
-
-    #     # Red wall mask
-    #     lower_red1, upper_red1 = np.array([0, 120, 70]), np.array([10, 255, 255])
-    #     lower_red2, upper_red2 = np.array([170, 120, 70]), np.array([180, 255, 255])
-    #     red_mask = cv2.bitwise_or(cv2.inRange(hsv, lower_red1, upper_red1), 
-    #                               cv2.inRange(hsv, lower_red2, upper_red2))
-
-    #     self.wall_circles[:] = 0
-
-    #     for r in range(self.rows):
-    #         for c in range(self.cols):
-    #             cx = (c + 1) * self.cell_size
-    #             cy = (r + 1) * self.cell_size
-    #             x1, y1 = max(cx - 8, 0), max(cy - 8, 0)
-    #             x2, y2 = min(cx + 8, self.board_size), min(cy + 8, self.board_size)
-
-    #             circle_crop = white_mask[y1:y2, x1:x2]
-    #             if np.mean(circle_crop) > 50:
-    #                 self.wall_circles[r, c] = 0
-    #                 cv2.circle(warped_img, (cx, cy), 8, (255, 0, 0), 2)  # blue circle
-    #             else:
-    #                 red_crop = red_mask[y1:y2, x1:x2]
-    #                 if np.mean(red_crop) > 50:
-    #                     self.wall_circles[r, c] = 1
-    #                     cv2.rectangle(warped_img, (x1, y1), (x2, y2), (0, 0, 255), 2)
-    #     return warped_img
-
-    # ------------ Detected horizontal and vertical walls
-    # def detect_circles_and_walls(self, warped_img):
-    #     hsv = cv2.cvtColor(warped_img, cv2.COLOR_BGR2HSV)
-
-    #     # White circle mask
-    #     lower_white = np.array([0, 0, 200])
-    #     upper_white = np.array([180, 50, 255])
-    #     white_mask = cv2.inRange(hsv, lower_white, upper_white)
-
-    #     # Red wall mask
-    #     lower_red1, upper_red1 = np.array([0, 120, 70]), np.array([10, 255, 255])
-    #     lower_red2, upper_red2 = np.array([170, 120, 70]), np.array([180, 255, 255])
-    #     red_mask = cv2.bitwise_or(cv2.inRange(hsv, lower_red1, upper_red1), 
-    #                               cv2.inRange(hsv, lower_red2, upper_red2))
-
-    #     self.wall_circles[:] = 0
-
-    #     # Parameters for orientation check
-    #     ext = 25  # How many pixels to look out from the center
-    #     thickness = 5 # Width of the "search" beam
-
-    #     for r in range(self.rows):
-    #         for c in range(self.cols):
-    #             cx = (c + 1) * self.cell_size
-    #             cy = (r + 1) * self.cell_size
-
-    #             # 1. Check if the white circle is visible
-    #             x1, y1 = max(cx - 8, 0), max(cy - 8, 0)
-    #             x2, y2 = min(cx + 8, self.board_size), min(cy + 8, self.board_size)
-    #             circle_crop = white_mask[y1:y2, x1:x2]
-
-    #             if np.mean(circle_crop) > 50:
-    #                 self.wall_circles[r, c] = 0
-    #                 cv2.circle(warped_img, (cx, cy), 8, (255, 0, 0), 2) # Blue = Empty
-    #             else:
-    #                 # 2. Circle is covered. Check orientation by looking at red mask extensions.
-                    
-    #                 # Horizontal "beam" (left to right)
-    #                 h_crop = red_mask[cy-thickness : cy+thickness, cx-ext : cx+ext]
-    #                 # Vertical "beam" (up to down)
-    #                 v_crop = red_mask[cy-ext : cy+ext, cx-thickness : cx+thickness]
-
-    #                 h_score = np.mean(h_crop) if h_crop.size > 0 else 0
-    #                 v_score = np.mean(v_crop) if v_crop.size > 0 else 0
-
-    #                 if h_score > v_score and h_score > 40:
-    #                     self.wall_circles[r, c] = 2 # Horizontal
-    #                     cv2.line(warped_img, (cx-ext, cy), (cx+ext, cy), (0, 255, 0), 3)
-    #                 elif v_score > h_score and v_score > 40:
-    #                     self.wall_circles[r, c] = 1 # Vertical
-    #                     cv2.line(warped_img, (cx, cy-ext), (cx, cy+ext), (0, 0, 255), 3)
-    #                 else:
-    #                     self.wall_circles[r, c] = 0 # Ambiguous
-        
-    #     return warped_img
-
-
-    #  ---------- Detects red and blue walls or robot VS human
+    #  ---------- Detects circles and red walls
     def detect_circles_and_walls(self, warped_img):
         hsv = cv2.cvtColor(warped_img, cv2.COLOR_BGR2HSV)
 
-        # 1. White circle mask
-        lower_white = np.array([0, 0, 200])
-        upper_white = np.array([180, 50, 255])
+        # 1. Masks
+        lower_white = np.array([0, 0, 200]); upper_white = np.array([180, 50, 255])
         white_mask = cv2.inRange(hsv, lower_white, upper_white)
 
-        # 2. Red wall mask (two ranges for red wrap-around)
         lower_red1, upper_red1 = np.array([0, 120, 70]), np.array([10, 255, 255])
         lower_red2, upper_red2 = np.array([170, 120, 70]), np.array([180, 255, 255])
         red_mask = cv2.bitwise_or(cv2.inRange(hsv, lower_red1, upper_red1), 
-                                  cv2.inRange(hsv, lower_red2, upper_red2))
-
-        # 3. Blue wall mask
-        # Adjust these values if your blue walls are darker/lighter
-        # lower_blue = np.array([100, 150, 50])
-        # upper_blue = np.array([140, 255, 255])
-        # blue_mask = cv2.inRange(hsv, lower_blue, upper_blue)
-
-        # Expanded Blue mask
-        # H: 90-130 covers most blues
-        # S: 50-255 allows for "pale" or "washed out" blue
-        # V: 30-255 allows for dark blue/shadows
-        lower_blue = np.array([90, 50, 30]) 
-        upper_blue = np.array([130, 255, 255])
-        blue_mask = cv2.inRange(hsv, lower_blue, upper_blue)
+                                cv2.inRange(hsv, lower_red2, upper_red2))
 
         self.wall_circles[:] = 0
         ext = 25  
-        thickness = 5 
+        
+        # --- 1. Global Red Detection ---
+        red_contours, _ = cv2.findContours(red_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
+        for cnt in red_contours:
+            if cv2.contourArea(cnt) < 100: 
+                continue
+                
+            # Get the GLOBAL bounding box of the red mask
+            rx, ry, rw, rh = cv2.boundingRect(cnt)
+            
+            # CENTER A: The exact center of the red bounding box (The "Leaning" Top)
+            cx_blob = rx + (rw // 2)
+            cy_blob = ry + (rh // 2)
+
+            # Draw the actual Red Mask Bounding Box
+            cv2.rectangle(warped_img, (rx, ry), (rx + rw, ry + rh), (0, 0, 255), 2)
+
+            # --- VISUALIZATION 1: Red Blob Centroid (Yellow Star + Red Line) ---
+            cv2.drawMarker(warped_img, (cx_blob, cy_blob), (0, 255, 255), 
+                        markerType=cv2.MARKER_STAR, markerSize=10, thickness=1)
+            
+            is_horizontal = rw > rh
+            if is_horizontal:
+                cv2.line(warped_img, (cx_blob - ext, cy_blob), (cx_blob + ext, cy_blob), (0, 0, 255), 1)
+            else:
+                cv2.line(warped_img, (cx_blob, cy_blob - ext), (cx_blob, cy_blob + ext), (0, 0, 255), 1)
+
+            # Map this blob to the nearest Grid Cell
+            c = int(round(cx_blob / self.cell_size)) - 1
+            r = int(round(cy_blob / self.cell_size)) - 1
+
+            # --- VISUALIZATION 2: Circle Center (Cyan Star + Green Line) ---
+            if 0 <= r < self.rows and 0 <= c < self.cols:
+                # CENTER B: The "Ground Truth" coordinate (The Target)
+                cx_circle = (c + 1) * self.cell_size
+                cy_circle = (r + 1) * self.cell_size
+                
+                self.wall_circles[r, c] = 2 if is_horizontal else 1
+
+                # Draw Ground Truth Marker
+                cv2.drawMarker(warped_img, (cx_circle, cy_circle), (255, 255, 0), 
+                            markerType=cv2.MARKER_STAR, markerSize=12, thickness=2)
+                
+                if is_horizontal:
+                    cv2.line(warped_img, (cx_circle - ext, cy_circle), (cx_circle + ext, cy_circle), (0, 255, 0), 2)
+                else:
+                    cv2.line(warped_img, (cx_circle, cy_circle - ext), (cx_circle, cy_circle + ext), (0, 255, 0), 2)
+
+                # Draw a white connector to show the "leaning" error
+                cv2.line(warped_img, (cx_blob, cy_blob), (cx_circle, cy_circle), (255, 255, 255), 1)
+
+        # --- 2. Empty Circle Detection (Optional Visual) ---
         for r in range(self.rows):
             for c in range(self.cols):
-                cx = (c + 1) * self.cell_size
-                cy = (r + 1) * self.cell_size
-
-                # Check if circle is visible
-                x1, y1 = max(cx - 8, 0), max(cy - 8, 0)
-                x2, y2 = min(cx + 8, self.board_size), min(cy + 8, self.board_size)
-                circle_crop = white_mask[y1:y2, x1:x2]
-
-                if np.mean(circle_crop) > 50:
-                    self.wall_circles[r, c] = 0
-                    cv2.circle(warped_img, (cx, cy), 8, (200, 200, 200), 2) # Light Grey = Circle
-                else:
-                    # Circle is covered. Check which color is dominant.
-                    red_center = red_mask[y1:y2, x1:x2]
-                    blue_center = blue_mask[y1:y2, x1:x2]
-
-                    if np.mean(red_center) > 40:
-                        # Logic for RED orientation
-                        h_crop = red_mask[cy-thickness : cy+thickness, cx-ext : cx+ext]
-                        v_crop = red_mask[cy-ext : cy+ext, cx-thickness : cx+thickness]
-                        h_score, v_score = np.mean(h_crop), np.mean(v_crop)
-
-                        if h_score > v_score:
-                            self.wall_circles[r, c] = 2 # Horizontal Red
-                            cv2.line(warped_img, (cx-ext, cy), (cx+ext, cy), (0, 0, 255), 3)
-                        else:
-                            self.wall_circles[r, c] = 1 # Vertical Red
-                            cv2.line(warped_img, (cx, cy-ext), (cx, cy+ext), (0, 0, 255), 3)
-
-                    elif np.mean(blue_center) > 40:
-                        # Logic for BLUE orientation
-                        h_crop = blue_mask[cy-thickness : cy+thickness, cx-ext : cx+ext]
-                        v_crop = blue_mask[cy-ext : cy+ext, cx-thickness : cx+thickness]
-                        h_score, v_score = np.mean(h_crop), np.mean(v_crop)
-
-                        if h_score > v_score:
-                            self.wall_circles[r, c] = 4 # Horizontal Blue
-                            cv2.line(warped_img, (cx-ext, cy), (cx+ext, cy), (255, 0, 0), 3)
-                        else:
-                            self.wall_circles[r, c] = 3 # Vertical Blue
-                            cv2.line(warped_img, (cx, cy-ext), (cx, cy+ext), (255, 0, 0), 3)
-        # Check blue and red masks
-        # cv2.imshow("Red Debug Mask", red_mask)
-        # cv2.imshow("Blue Debug Mask", blue_mask)
+                if self.wall_circles[r, c] == 0:
+                    cx = (c + 1) * self.cell_size
+                    cy = (r + 1) * self.cell_size
+                    x1, y1 = max(cx - 8, 0), max(cy - 8, 0)
+                    x2, y2 = min(cx + 8, warped_img.shape[1]), min(cy + 8, warped_img.shape[0])
+                    if np.mean(white_mask[y1:y2, x1:x2]) > 50:
+                        cv2.circle(warped_img, (cx, cy), 8, (200, 200, 200), 1)
 
         return warped_img
+    
+    def draw_bounding_box(self, mask, warped_img, color):
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+        for cnt in contours:
+            area = cv2.contourArea(cnt)
+
+            # Ignore tiny noise
+            if area < 50:
+                continue
+
+            x, y, w, h = cv2.boundingRect(cnt)
+
+            cv2.rectangle(
+                warped_img,
+                (x, y),
+                (x + w, y + h),
+                color,
+                2
+            )
 
     # --- Main Loop ---
     def timer_callback(self):
