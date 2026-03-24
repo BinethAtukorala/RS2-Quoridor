@@ -20,6 +20,8 @@ class MoveDecision(Node):
         self.get_logger().info('Publishing: "%s"' % msg.data)
         self.i += 1
 
+    
+
 
 def main(args=None):
     rclpy.init(args=args)
