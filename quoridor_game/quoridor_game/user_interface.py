@@ -7,7 +7,7 @@ from std_msgs.msg import String
 class UserInterface(Node):
 
     def __init__(self):
-        super().__init__('game_state')
+        super().__init__('ui')
         self.publisher_ = self.create_publisher(String, 'topic', 10)
         timer_period = 0.5  # seconds
         self.timer = self.create_timer(timer_period, self.timer_callback)

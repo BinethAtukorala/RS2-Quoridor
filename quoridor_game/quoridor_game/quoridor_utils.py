@@ -19,9 +19,9 @@ class Pawn:
 class QuoridorBoard():
     n_: int             # Size of board (n x n). n must be an even number
     wall_n_: int        # Size of board spaces for walls
-    bot_pos_: Pawn       # Position of the bot's pawn
-    player_pos_: Pawn    # Position of the player's pawn
-    walls: list[Wall]    # Wall positions with pos a, b
+    bot_pos_: Pawn      # Position of the bot's pawn
+    player_pos_: Pawn   # Position of the player's pawn
+    walls: list[Wall]   # Wall positions with pos a, b
     
     def __init__(self, n):
         self.n_ = n
@@ -137,4 +137,3 @@ class QuoridorBoard():
 
         return True
 
-    
