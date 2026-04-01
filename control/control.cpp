@@ -6,9 +6,6 @@
 
 #include <rclcpp/rclcpp.hpp>
 #include <moveit/move_group_interface/move_group_interface.h>
-#include <moveit/planning_scene_interface/planning_scene_interface.h>
-#include <moveit_msgs/msg/collision_object.hpp>
-#include <shape_msgs/msg/solid_primitive.hpp>
 #include <geometry_msgs/msg/pose.hpp>
 
 double deg2rad(double deg) {
@@ -22,10 +19,11 @@ std::vector<double> toRadians(const std::vector<double>& degs) {
     return rads;
 }
 
-bool moveToWaypoint(moveit::planning_interface::MoveGroupInterface &move_group,
-                    const std::vector<double> &target,
-                    const std::string &name,
-                    rclcpp::Logger logger)
+bool moveToWaypoint(
+    moveit::planning_interface::MoveGroupInterface &move_group,
+    const std::vector<double> &target,
+    const std::string &name,
+    rclcpp::Logger logger)
 {
     move_group.setStartStateToCurrentState();
     move_group.setJointValueTarget(target);
@@ -33,17 +31,20 @@ bool moveToWaypoint(moveit::planning_interface::MoveGroupInterface &move_group,
     moveit::planning_interface::MoveGroupInterface::Plan plan;
     auto result = move_group.plan(plan);
 
-    bool success = (result == moveit::core::MoveItErrorCode::SUCCESS);
-
-    if (success) {
-        RCLCPP_INFO(logger, "Executing %s", name.c_str());
-        move_group.execute(plan);
-    } else {
+    if (result != moveit::core::MoveItErrorCode::SUCCESS) {
         RCLCPP_ERROR(logger, "Planning failed for %s", name.c_str());
+        return false;
     }
 
-    rclcpp::sleep_for(std::chrono::seconds(2));
-    return success;
+    auto exec_result = move_group.execute(plan);
+    if (exec_result != moveit::core::MoveItErrorCode::SUCCESS) {
+        RCLCPP_ERROR(logger, "Execution failed for %s", name.c_str());
+        return false;
+    }
+
+    RCLCPP_INFO(logger, "Completed %s", name.c_str());
+    rclcpp::sleep_for(std::chrono::seconds(1));
+    return true;
 }
 
 int main(int argc, char * argv[])
@@ -55,39 +56,19 @@ int main(int argc, char * argv[])
         rclcpp::NodeOptions().automatically_declare_parameters_from_overrides(true)
     );
 
-    auto logger = rclcpp::get_logger("control");
+    auto logger = node->get_logger();
 
-    // Executor for MoveIt updates
     rclcpp::executors::SingleThreadedExecutor executor;
     executor.add_node(node);
-    std::thread spinner([&executor]() { executor.spin(); });
+    std::thread([&executor]() { executor.spin(); }).detach();
 
     using moveit::planning_interface::MoveGroupInterface;
-    MoveGroupInterface move_group(node, "ur_manipulator");
+    MoveGroupInterface move_group(node, "ur_onrobot_manipulator");
 
-    move_group.setMaxVelocityScalingFactor(0.1);
-    move_group.setMaxAccelerationScalingFactor(0.1);
+    move_group.setMaxVelocityScalingFactor(0.2);
+    move_group.setMaxAccelerationScalingFactor(0.2);
 
-    moveit::planning_interface::PlanningSceneInterface planning_scene_interface;
-
-    moveit_msgs::msg::CollisionObject ground;
-    ground.id = "ground";
-    ground.header.frame_id = "world";
-
-    shape_msgs::msg::SolidPrimitive box;
-    box.type = box.BOX;
-    box.dimensions = {2.0, 2.0, 0.1};
-
-    geometry_msgs::msg::Pose ground_pose;
-    ground_pose.orientation.w = 1.0;
-    ground_pose.position.z = -0.05;
-
-    ground.primitives.push_back(box);
-    ground.primitive_poses.push_back(ground_pose);
-    ground.operation = ground.ADD;
-
-    planning_scene_interface.applyCollisionObject(ground);
-    RCLCPP_INFO(logger, "Added ground collision object");
+    rclcpp::sleep_for(std::chrono::seconds(2));
 
     std::vector<double> wp1 = toRadians({-70, -110, 20, -140, 90, 0});
     std::vector<double> wp2 = toRadians({-80, -120, 10, -130, 90, 10});
@@ -98,7 +79,5 @@ int main(int argc, char * argv[])
     moveToWaypoint(move_group, wp3, "Waypoint 3", logger);
 
     rclcpp::shutdown();
-    spinner.join();
-
     return 0;
 }
