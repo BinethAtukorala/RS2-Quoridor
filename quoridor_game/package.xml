@@ -3,7 +3,7 @@
 <package format="3">
   <name>quoridor_game</name>
   <version>0.0.0</version>
-  <description>TODO: Package description</description>
+  <description>Quoridor game control subsystem for UR3e robot</description>
   <maintainer email="bineth@todo.todo">bineth</maintainer>
   <license>TODO: License declaration</license>
 

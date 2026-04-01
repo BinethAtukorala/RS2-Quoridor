@@ -4,7 +4,7 @@ package_name = 'quoridor_game'
 
 setup(
     name=package_name,
-    version='0.0.0',
+    version='0.1.0',
     packages=find_packages(exclude=['test']),
     data_files=[
         ('share/ament_index/resource_index/packages',
@@ -15,7 +15,7 @@ setup(
     zip_safe=True,
     maintainer='bineth',
     maintainer_email='bineth@todo.todo',
-    description='TODO: Package description',
+    description='Quoridor game control subsystem for UR3e robot',
     license='TODO: License declaration',
     extras_require={
         'test': [
@@ -24,8 +24,9 @@ setup(
     },
     entry_points={
         'console_scripts': [
-            'talker = quoridor_game.minimal_publisher:main',
-            'listener = quoridor_game.subscriber_member_function:main',
+            'state_manager = quoridor_game.state_manager:main',
+            'move_decision = quoridor_game.move_decision:main',
+            'user_interface = quoridor_game.user_interface:main',
         ],
     },
 )
