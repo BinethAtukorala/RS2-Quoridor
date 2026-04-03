@@ -304,7 +304,7 @@ class CircleDetectorNode(Node):
         self.pub_walls = self.create_publisher(Int32MultiArray, '/quoridor/wall_state', 10)
 
         # 2. File Reading Setup
-        self.circle_file = os.path.expanduser("~/rs2_ws/src/perception/circle_coords.txt")
+        self.circle_file = os.path.expanduser("~/ros2_ws/src/perception/circle_coords.txt")
         self.saved_coords = {} # Stores (gx, gy) -> (x, y, z)
         self.load_circle_coords()
 
@@ -468,12 +468,54 @@ class CircleDetectorNode(Node):
 
         return warped_img
 
+    # def timer_callback(self):
+    #     frames = self.pipeline.wait_for_frames()
+    #     color_frame = frames.get_color_frame()
+    #     if not color_frame:
+    #         return
+        
+    #     img = np.asanyarray(color_frame.get_data())
+    #     raw_corners = self.detect_board_corners(img)
+
+    #     if raw_corners is None:
+    #         cv2.imshow("Camera View (Circles)", img)
+    #         cv2.waitKey(1)
+    #         return
+
+    #     corners = self.order_corners(raw_corners)
+    #     for p in corners:
+    #         cv2.circle(img, (int(p[0]), int(p[1])), 6, (0, 255, 0), -1)
+
+    #     dst = np.array([[0,0], [self.board_size,0], [self.board_size,self.board_size], [0,self.board_size]], dtype=np.float32)
+    #     H, _ = cv2.findHomography(corners, dst)
+    #     warped = cv2.warpPerspective(img, H, (self.board_size, self.board_size))
+
+    #     warped = self.detect_circles_and_walls(warped)
+
+    #     # Log wall state
+    #     wall_labels = {0: "Empty", 1: "V-Red", 2: "H-Red", 3: "V-Blue", 4: "H-Blue"}
+    #     self.get_logger().info("\n--- Wall Orientation & Color State ---")
+    #     for row in self.wall_circles:
+    #         self.get_logger().info(str([wall_labels[val] for val in row]))
+
+    #     cv2.imshow("Camera View (Circles)", img)
+    #     cv2.imshow("Top-Down Walls", warped)
+    #     cv2.waitKey(1)
+
+    #     # Publish
+    #     msg_img = self.bridge.cv2_to_imgmsg(warped, encoding="bgr8")
+    #     self.pub_image.publish(msg_img)
+    #     msg_wall = Int32MultiArray(data=self.wall_circles.flatten().tolist())
+    #     self.pub_walls.publish(msg_wall)
+
+
     def timer_callback(self):
         frames = self.pipeline.wait_for_frames()
         color_frame = frames.get_color_frame()
+        depth_frame = frames.get_depth_frame()   ### NEW: Get depth for outside walls
         if not color_frame:
             return
-        
+
         img = np.asanyarray(color_frame.get_data())
         raw_corners = self.detect_board_corners(img)
 
@@ -492,6 +534,14 @@ class CircleDetectorNode(Node):
 
         warped = self.detect_circles_and_walls(warped)
 
+        # --- NEW: Detect red walls outside the board in the original image
+        # outside_red_walls = self.detect_outside_walls(img, depth_frame)
+        outside_red_walls = self.detect_outside_walls(img, depth_frame, raw_corners)  # pass the board corners
+        for wall in outside_red_walls:
+            cx, cy, x3d, y3d, z3d = wall
+            cv2.circle(img, (cx, cy), 10, (0, 0, 255), 2)
+            self.get_logger().info(f"Outside Wall 3D (cm): x={x3d*100:.2f}, y={y3d*100:.2f}, z={z3d*100:.2f}")
+
         # Log wall state
         wall_labels = {0: "Empty", 1: "V-Red", 2: "H-Red", 3: "V-Blue", 4: "H-Blue"}
         self.get_logger().info("\n--- Wall Orientation & Color State ---")
@@ -508,6 +558,132 @@ class CircleDetectorNode(Node):
         msg_wall = Int32MultiArray(data=self.wall_circles.flatten().tolist())
         self.pub_walls.publish(msg_wall)
 
+
+    # # --- NEW FUNCTION: Detect red walls outside the board
+    # def detect_outside_walls(self, img, depth_frame):
+    #     """Detect red walls outside the board using the original camera image and return their 3D coordinates."""
+    #     hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+    #     lower_red1, upper_red1 = np.array([0, 120, 70]), np.array([10, 255, 255])
+    #     lower_red2, upper_red2 = np.array([170, 120, 70]), np.array([180, 255, 255])
+    #     red_mask = cv2.bitwise_or(cv2.inRange(hsv, lower_red1, upper_red1),
+    #                             cv2.inRange(hsv, lower_red2, upper_red2))
+
+    #     contours, _ = cv2.findContours(red_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    #     outside_walls = []
+
+    #     for cnt in contours:
+    #         if cv2.contourArea(cnt) < 150:  # Filter small noise
+    #             continue
+    #         x, y, w, h = cv2.boundingRect(cnt)
+    #         cx, cy = x + w//2, y + h//2
+
+    #         # --- Compute 3D coordinate from depth
+    #         if depth_frame:
+    #             depth = depth_frame.get_distance(cx, cy)
+    #             if depth > 0:
+    #                 intrinsics = self.profile.get_stream(rs.stream.color).as_video_stream_profile().get_intrinsics()
+    #                 X = (cx - intrinsics.ppx) / intrinsics.fx * depth
+    #                 Y = (cy - intrinsics.ppy) / intrinsics.fy * depth
+    #                 Z = depth
+    #                 outside_walls.append((cx, cy, X, Y, Z))
+        
+    #     return outside_walls
+
+    # def detect_outside_walls(self, img, depth_frame, board_corners):
+    #     """
+    #     Detect red walls outside the board using the original camera image.
+    #     Only considers red blobs **outside the detected board quadrilateral**.
+    #     Returns a list of 3D coordinates.
+    #     """
+    #     hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+    #     lower_red1, upper_red1 = np.array([0, 120, 70]), np.array([10, 255, 255])
+    #     lower_red2, upper_red2 = np.array([170, 120, 70]), np.array([180, 255, 255])
+    #     red_mask = cv2.bitwise_or(cv2.inRange(hsv, lower_red1, upper_red1),
+    #                             cv2.inRange(hsv, lower_red2, upper_red2))
+
+    #     # --- Create mask of the board to exclude inside-board walls
+    #     board_mask = np.zeros(img.shape[:2], dtype=np.uint8)
+    #     pts = board_corners.astype(np.int32)
+    #     cv2.fillPoly(board_mask, [pts], 255)
+    #     red_mask = cv2.bitwise_and(red_mask, cv2.bitwise_not(board_mask))  # Only outside
+
+    #     contours, _ = cv2.findContours(red_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    #     outside_walls = []
+
+    #     for cnt in contours:
+    #         if cv2.contourArea(cnt) < 150:  # Filter small noise
+    #             continue
+    #         x, y, w, h = cv2.boundingRect(cnt)
+    #         cx, cy = x + w // 2, y + h // 2
+
+    #         # --- Compute 3D coordinate from depth
+    #         if depth_frame:
+    #             depth = depth_frame.get_distance(cx, cy)
+    #             if depth > 0:
+    #                 intrinsics = self.profile.get_stream(rs.stream.color).as_video_stream_profile().get_intrinsics()
+    #                 X = (cx - intrinsics.ppx) / intrinsics.fx * depth
+    #                 Y = (cy - intrinsics.ppy) / intrinsics.fy * depth
+    #                 Z = depth
+    #                 outside_walls.append((cx, cy, X, Y, Z))
+        
+    #     return outside_walls
+
+    def detect_outside_walls(self, img, depth_frame, board_corners):
+        """
+        Detect red walls outside the board and visualize them like inside walls.
+        Returns a list of tuples: (cx, cy, X, Y, Z)
+        """
+        hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+        lower_red1, upper_red1 = np.array([0, 120, 70]), np.array([10, 255, 255])
+        lower_red2, upper_red2 = np.array([170, 120, 70]), np.array([180, 255, 255])
+        red_mask = cv2.bitwise_or(cv2.inRange(hsv, lower_red1, upper_red1),
+                                cv2.inRange(hsv, lower_red2, upper_red2))
+
+        # Mask out inside of the board
+        board_mask = np.zeros(img.shape[:2], dtype=np.uint8)
+        pts = board_corners.astype(np.int32)
+        cv2.fillPoly(board_mask, [pts], 255)
+        red_mask = cv2.bitwise_and(red_mask, cv2.bitwise_not(board_mask))  # Only outside
+
+        contours, _ = cv2.findContours(red_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        outside_walls = []
+
+        ext = 25  # line half-length for orientation visualization
+
+        for cnt in contours:
+            if cv2.contourArea(cnt) < 150:  # filter noise
+                continue
+
+            x, y, w, h = cv2.boundingRect(cnt)
+            cx, cy = x + w // 2, y + h // 2
+
+            # Visuals: bounding box and asterisk
+            cv2.rectangle(img, (x, y), (x + w, y + h), (0, 0, 255), 2)
+            cv2.drawMarker(img, (cx, cy), (0, 255, 255), markerType=cv2.MARKER_STAR, markerSize=10, thickness=1)
+
+            # Orientation line (horizontal or vertical)
+            is_horizontal = w > h
+            color = (0, 255, 0)
+            if is_horizontal:
+                cv2.line(img, (cx - ext, cy), (cx + ext, cy), color, 2)
+            else:
+                cv2.line(img, (cx, cy - ext), (cx, cy + ext), color, 2)
+
+            # 3D coordinates
+            X = Y = Z = 0
+            if depth_frame:
+                depth = depth_frame.get_distance(cx, cy)
+                if depth > 0:
+                    intrinsics = self.profile.get_stream(rs.stream.color).as_video_stream_profile().get_intrinsics()
+                    X = (cx - intrinsics.ppx) / intrinsics.fx * depth
+                    Y = (cy - intrinsics.ppy) / intrinsics.fy * depth
+                    Z = depth
+
+            outside_walls.append((cx, cy, X, Y, Z))
+            self.get_logger().info(f"Outside Wall 3D (cm): x={X*100:.2f}, y={Y*100:.2f}, z={Z*100:.2f}")
+
+        return outside_walls
+        
 def main(args=None):
     rclpy.init(args=args)
     node = CircleDetectorNode()

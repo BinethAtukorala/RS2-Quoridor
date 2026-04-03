@@ -363,7 +363,7 @@ class GridDetectorNode(Node):
 
         self.board = self.QuoridorBoard()
 
-        self.grid_file = os.path.expanduser("~/rs2_ws/src/perception/grid_coords.txt")
+        self.grid_file = os.path.expanduser("~/ros2_ws/src/perception/grid_coords.txt")
         self.grid_lookup = {}  # (row, col) -> [x,y,z]
         self.load_grid_coordinates()
 
