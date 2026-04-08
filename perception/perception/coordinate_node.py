@@ -487,8 +487,8 @@ class CoordinateNode(Node):
         self.circle_file = os.path.expanduser("~/ros2_ws/src/perception/circle_coords.txt")
         self.grid_file = os.path.expanduser("~/ros2_ws/src/perception/grid_coords.txt")
 
-        self.pub_grid_array = self.create_publisher(Float32MultiArray, '/quoridor/grid_3d_array', 10)
-        self.pub_wall_array = self.create_publisher(Float32MultiArray, '/quoridor/wall_3d_array', 10)
+        self.pub_grid_array = self.create_publisher(Float32MultiArray, '/perception/grids_3d', 10)
+        self.pub_wall_array = self.create_publisher(Float32MultiArray, '/perception/circles_3d', 10)
 
         self.timer = self.create_timer(0.1, self.timer_callback)
         self.get_logger().info("Waiting for full board detection (25 Grids, 16 Walls)...")

@@ -304,6 +304,7 @@ import numpy as np
 import cv2
 from cv_bridge import CvBridge
 import os
+from std_msgs.msg import Float32MultiArray
 
 class GridDetectorNode(Node):
     class QuoridorBoard:
@@ -355,8 +356,10 @@ class GridDetectorNode(Node):
         bag_file = self.get_parameter("bag_file").get_parameter_value().string_value
         self.camera = self.RealsenseCamera(bag_file if bag_file != "" else None)
 
-        self.pub_image = self.create_publisher(Image, '/quoridor/topdown_grid', 10)
-        self.pub_board = self.create_publisher(Int32MultiArray, '/quoridor/board_state', 10)
+        self.pub_image = self.create_publisher(Image, '/perception/topdown_grid', 10)
+        self.pub_board = self.create_publisher(Int32MultiArray, '/perception/board_state', 10)
+
+        self.pub_pawns = self.create_publisher(Float32MultiArray, '/perception/pawns_3d', 10)
 
         cv2.namedWindow("Camera View", cv2.WINDOW_AUTOSIZE)
         cv2.namedWindow("Top-Down Board", cv2.WINDOW_AUTOSIZE)
@@ -448,7 +451,8 @@ class GridDetectorNode(Node):
                         depths.append(d)
         return np.median(depths) if depths else 0.0
 
-    def detect_black_objects(self, img, H_inv=None, depth_frame=None):
+    # def detect_black_objects(self, img, H_inv=None, depth_frame=None):
+    def detect_black_objects(self, img, pawns_3d_grid, H_inv=None, depth_frame=None):
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         _, mask = cv2.threshold(gray, 70, 255, cv2.THRESH_BINARY_INV)
         cell = 100
@@ -493,9 +497,21 @@ class GridDetectorNode(Node):
                             #     self.get_logger().warn(f"Pawn at [{r},{c}] detected but depth is invalid (0.0)")
 
                             # Use precomputed grid coordinates instead of depth
+                            # if (r, c) in self.grid_lookup:
+                            #     point_3d = self.grid_lookup[(r, c)]
+                            #     self.get_logger().info(f"Pawn at [{r},{c}] 3D: x={point_3d[0]:.3f}, y={point_3d[1]:.3f}, z={point_3d[2]:.3f}")
+                            # else:
+                            #     self.get_logger().warn(f"Pawn at [{r},{c}] detected but grid coordinate not found")
+                            
                             if (r, c) in self.grid_lookup:
                                 point_3d = self.grid_lookup[(r, c)]
-                                self.get_logger().info(f"Pawn at [{r},{c}] 3D: x={point_3d[0]:.3f}, y={point_3d[1]:.3f}, z={point_3d[2]:.3f}")
+
+                                # Store into grid
+                                pawns_3d_grid[r][c] = point_3d
+
+                                self.get_logger().info(
+                                    f"Pawn at [{r},{c}] 3D: x={point_3d[0]:.3f}, y={point_3d[1]:.3f}, z={point_3d[2]:.3f}"
+                                )
                             else:
                                 self.get_logger().warn(f"Pawn at [{r},{c}] detected but grid coordinate not found")
                 else:
@@ -505,6 +521,9 @@ class GridDetectorNode(Node):
         color, depth, depth_frame = self.camera.get_frames()
         if color is None:
             return
+
+        # Initialize full grid with zeros
+        pawns_3d_grid = [[[0.0, 0.0, 0.0] for _ in range(5)] for _ in range(5)]
 
         corners = self.detect_board_corners(color)
         if corners is None:
@@ -520,7 +539,8 @@ class GridDetectorNode(Node):
         topdown = self.warp_board(color, H)
 
         self.board.clear()
-        self.detect_black_objects(topdown, H_inv, depth_frame)
+        # self.detect_black_objects(topdown, H_inv, depth_frame)
+        self.detect_black_objects(topdown, pawns_3d_grid, H_inv, depth_frame)
         topdown = self.draw_grid(topdown)
 
         # Print board state
@@ -537,6 +557,17 @@ class GridDetectorNode(Node):
         msg_board = Int32MultiArray()
         msg_board.data = self.board.board.flatten().tolist()
         self.pub_board.publish(msg_board)
+
+        # Flatten [5][5][3] → 1D list
+        flat_data = []
+        for row in pawns_3d_grid:
+            for cell in row:
+                flat_data.extend(cell)
+
+        msg_pawns = Float32MultiArray()
+        msg_pawns.data = flat_data
+
+        self.pub_pawns.publish(msg_pawns)
 
 def main(args=None):
     rclpy.init(args=args)

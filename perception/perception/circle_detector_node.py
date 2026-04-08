@@ -293,6 +293,7 @@ import numpy as np
 import cv2
 import os
 from cv_bridge import CvBridge
+from std_msgs.msg import Float32MultiArray
 
 class CircleDetectorNode(Node):
     def __init__(self):
@@ -300,8 +301,11 @@ class CircleDetectorNode(Node):
         
         # 1. ROS Parameters and Pubs
         self.bridge = CvBridge()
-        self.pub_image = self.create_publisher(Image, '/quoridor/topdown_circles', 10)
-        self.pub_walls = self.create_publisher(Int32MultiArray, '/quoridor/wall_state', 10)
+        self.pub_image = self.create_publisher(Image, '/perception/topdown_circles', 10)
+        self.pub_walls = self.create_publisher(Int32MultiArray, '/perception/wall_state', 10)
+
+        self.pub_inside = self.create_publisher(Float32MultiArray, '/perception/walls_inside_3d', 10)
+        self.pub_outside = self.create_publisher(Float32MultiArray, '/perception/walls_outside_3d', 10)
 
         # 2. File Reading Setup
         self.circle_file = os.path.expanduser("~/ros2_ws/src/perception/circle_coords.txt")
@@ -543,7 +547,8 @@ class CircleDetectorNode(Node):
             self.get_logger().info(f"Outside Wall 3D (cm): x={x3d*100:.2f}, y={y3d*100:.2f}, z={z3d*100:.2f}")
 
         # Log wall state
-        wall_labels = {0: "Empty", 1: "V-Red", 2: "H-Red", 3: "V-Blue", 4: "H-Blue"}
+        # wall_labels = {0: "Empty", 1: "V-Red", 2: "H-Red", 3: "V-Blue", 4: "H-Blue"}
+        wall_labels = {0: "Empty", 1: "Vertical", 2: "Horizontal"}
         self.get_logger().info("\n--- Wall Orientation & Color State ---")
         for row in self.wall_circles:
             self.get_logger().info(str([wall_labels[val] for val in row]))
@@ -551,6 +556,34 @@ class CircleDetectorNode(Node):
         cv2.imshow("Camera View (Circles)", img)
         cv2.imshow("Top-Down Walls", warped)
         cv2.waitKey(1)
+
+        # ================= INSIDE WALLS =================
+        inside_data = []
+
+        for r in range(self.rows):
+            for c in range(self.cols):
+                if self.wall_circles[r, c] != 0 and (c, r) in self.saved_coords:
+                    x, y, z = self.saved_coords[(c, r)]
+                else:
+                    x, y, z = 0.0, 0.0, 0.0
+
+                inside_data.extend([x, y, z])
+
+        msg_inside = Float32MultiArray()
+        msg_inside.data = inside_data
+        self.pub_inside.publish(msg_inside)
+
+
+        # ================= OUTSIDE WALLS =================
+        outside_data = []
+
+        for wall in outside_red_walls:
+            _, _, x3d, y3d, z3d = wall
+            outside_data.extend([x3d, y3d, z3d])
+
+        msg_outside = Float32MultiArray()
+        msg_outside.data = outside_data
+        self.pub_outside.publish(msg_outside)
 
         # Publish
         msg_img = self.bridge.cv2_to_imgmsg(warped, encoding="bgr8")
