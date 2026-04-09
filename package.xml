@@ -13,6 +13,16 @@
   <depend>moveit_ros_planning_interface</depend>
   <depend>std_msgs</depend>
   <depend>geometry_msgs</depend>
+  <!-- <depend>opencv4</depend>
+  <depend>realsense2</depend> -->
+
+  <depend>cv_bridge</depend>
+  <depend>sensor_msgs</depend>
+
+  <build_depend>librealsense2</build_depend>
+  <exec_depend>librealsense2</exec_depend>
+  <build_depend>opencv</build_depend>
+  <exec_depend>opencv</exec_depend>
 
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>

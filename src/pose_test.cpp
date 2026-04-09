@@ -192,29 +192,29 @@ int main(int argc, char * argv[])
 
     // -------- TEST MOTION (POSE BASED) --------
     geometry_msgs::msg::Pose target_pose;
-    // target_pose.position.x = 0.3;  // example pose
-    // target_pose.position.y = 0.0;
-    // target_pose.position.z = 0.5;
-    // target_pose.orientation.x = 0.0;
-    // target_pose.orientation.y = 0.0;
-    // target_pose.orientation.z = 0.0;
-    // target_pose.orientation.w = 1.0;
+    // target_pose.position.x = 0.127;  // example pose
+    // target_pose.position.y = 0.422;
+    // target_pose.position.z = 0.694;
+    // target_pose.orientation.x = 0.567;
+    // target_pose.orientation.y = 0.422;
+    // target_pose.orientation.z = 0.567;
+    // target_pose.orientation.w = -0.422;
 
-    target_pose.position.x = 0.065;  // example pose
-    target_pose.position.y = 0.426;
-    target_pose.position.z = 0.057;
-    target_pose.orientation.x = 1.0;
-    target_pose.orientation.y = 0.016;
-    target_pose.orientation.z = 0.008;
-    target_pose.orientation.w = 0.01;
+    target_pose.position.x = -0.092;  // example pose
+    target_pose.position.y = 0.365;
+    target_pose.position.z = 0.169;
+    target_pose.orientation.x = 0.729;
+    target_pose.orientation.y = 0.685;
+    target_pose.orientation.z = 0.004;
+    target_pose.orientation.w = 0.014;
 
-    // target_pose.position.x = 0.3;  // example pose
-    // target_pose.position.y = -0.0;
-    // target_pose.position.z = 0.5;
-    // target_pose.orientation.x = 0.0;
-    // target_pose.orientation.y = 0.0;
-    // target_pose.orientation.z = 0.0;
-    // target_pose.orientation.w = 1.0;
+    // target_pose.position.x = -0.09;  // example pose
+    // target_pose.position.y = 0.441;
+    // target_pose.position.z = 0.680;
+    // target_pose.orientation.x = 0.418;
+    // target_pose.orientation.y = 0.570;
+    // target_pose.orientation.z = 0.570;
+    // target_pose.orientation.w = -0.418;
 
 
     move_group.setPoseTarget(target_pose);

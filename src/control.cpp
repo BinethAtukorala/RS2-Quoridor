@@ -76,7 +76,9 @@ int main(int argc, char * argv[])
     bool gripper_done = false;
     auto gripper_sub = node->create_subscription<std_msgs::msg::String>(
         "/gripper/status", 10, [&](std_msgs::msg::String::SharedPtr msg){
-            if(msg->data == "done") gripper_done = true;
+            // Update done for any gripper command that finishes
+            if(msg->data == "done" || msg->data == "success" || msg->data == "fail" || msg->data == "wrong")
+                gripper_done = true;
         }
     );
 
@@ -84,11 +86,12 @@ int main(int argc, char * argv[])
         gripper_done = false;
         std_msgs::msg::String msg;
         msg.data = cmd;
+        RCLCPP_ERROR(logger, "DEBUG: COMMAND = %s", cmd.c_str());
         gripper_pub->publish(msg);
         RCLCPP_INFO(logger, "Sent gripper command: %s", cmd.c_str());
 
-        // wait for response
-        rclcpp::Rate rate(10);
+        // wait for gripper to actually finish the action
+        rclcpp::Rate rate(20); // faster check
         while(!gripper_done && rclcpp::ok())
             rate.sleep();
     };
@@ -103,16 +106,21 @@ int main(int argc, char * argv[])
     std::vector<double> wp7 = toRadians({-69.84, -115.24, -65.25, -90.35, 87.19, 107.73});
     std::vector<double> wp8 = toRadians({-69.84, -121.42, -31.66, -117.77, 87.17, 107.72});
 
+    // -------------------- SEQUENCE --------------------
     moveToWaypoint(move_group, wp1, "Waypoint 1", logger);
     moveToWaypoint(move_group, wp2, "Waypoint 2", logger);
-    publishGripperCommand("open");
+
+    publishGripperCommand("open");          // fully close gripper
     moveToWaypoint(move_group, wp3, "Waypoint 3", logger);
-    publishGripperCommand("pickup_wall");
+
+    publishGripperCommand("pickup_pawn");    // pickup wall safely
     moveToWaypoint(move_group, wp4, "Waypoint 4", logger);
+
     moveToWaypoint(move_group, wp5, "Waypoint 5", logger);
     moveToWaypoint(move_group, wp6, "Waypoint 6", logger);
     moveToWaypoint(move_group, wp7, "Waypoint 7", logger);
-    publishGripperCommand("drop_wall");
+
+    publishGripperCommand("drop_pawn");      // drop wall safely
     moveToWaypoint(move_group, wp8, "Waypoint 8", logger);
 
     rclcpp::shutdown();

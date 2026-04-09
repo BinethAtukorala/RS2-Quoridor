@@ -102,7 +102,7 @@ int main(int argc, char * argv[])
         rclcpp::Rate rate(10);
         for(int i=0; i<50; ++i)
         {
-            rclcpp::spin_some(node);
+            // rclcpp::spin_some(node);
             if(joint_received){
                 robot_state.setVariablePositions(joint_positions);
                 const moveit::core::LinkModel* ee_link = robot_model->getLinkModel(move_group.getEndEffectorLink());
