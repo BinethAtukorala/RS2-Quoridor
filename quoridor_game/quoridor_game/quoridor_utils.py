@@ -66,9 +66,9 @@ class Move:
 
 
 class QuoridorBoard:
-    WALLS_PER_PLAYER = 10
+    WALLS_PER_PLAYER = 4
 
-    def __init__(self, n=9):
+    def __init__(self, n=5):
         self.n_ = n
         self.wall_n_ = n - 1
         self.bot_pos_ = Pawn(n // 2, 0)
