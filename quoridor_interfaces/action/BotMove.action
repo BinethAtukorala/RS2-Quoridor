@@ -1,0 +1,10 @@
+# Request
+bool wall
+geometry_msgs/Pose start
+geometry_msgs/Pose end
+---
+# Result
+bool result
+---
+# Feedback
+float32 progress
