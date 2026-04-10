@@ -1,4 +1,4 @@
-# #!/usr/bin/env python3
+#!/usr/bin/env python3
 
 # import rclpy
 # from rclpy.node import Node
@@ -450,7 +450,7 @@ class CoordinateNode(Node):
 
     class RealsenseCamera:
         def __init__(self, bag_file=None):
-            self.width, self.height, self.fps = 1280, 720, 30
+            self.width, self.height, self.fps = 640, 480, 15
             self.pipeline = rs.pipeline()
             config = rs.config()
             self.align = rs.align(rs.stream.color)
@@ -484,8 +484,8 @@ class CoordinateNode(Node):
         bag_file = self.get_parameter("bag_file").get_parameter_value().string_value
         self.camera = self.RealsenseCamera(bag_file if bag_file != "" else None)
 
-        self.circle_file = os.path.expanduser("~/ros2_ws/src/perception/circle_coords.txt")
-        self.grid_file = os.path.expanduser("~/ros2_ws/src/perception/grid_coords.txt")
+        self.circle_file = os.path.expanduser("/rs2_ws/src/perception/circle_coords.txt")
+        self.grid_file = os.path.expanduser("/rs2_ws/src/perception/grid_coords.txt")
 
         self.pub_grid_array = self.create_publisher(Float32MultiArray, '/perception/grids_3d', 10)
         self.pub_wall_array = self.create_publisher(Float32MultiArray, '/perception/circles_3d', 10)

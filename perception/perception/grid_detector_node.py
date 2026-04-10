@@ -1,5 +1,5 @@
-# perception/perception/grid_detector_node.py
 #!/usr/bin/env python3
+# perception/perception/grid_detector_node.py
 
 # import rclpy
 # from rclpy.node import Node
@@ -328,7 +328,7 @@ class GridDetectorNode(Node):
 
     class RealsenseCamera:
         def __init__(self, bag_file=None):
-            self.width, self.height, self.fps = 1280, 720, 30
+            self.width, self.height, self.fps = 640, 480, 15
             self.pipeline = rs.pipeline()
             config = rs.config()
             if bag_file:

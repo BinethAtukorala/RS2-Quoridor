@@ -308,7 +308,7 @@ class CircleDetectorNode(Node):
         self.pub_outside = self.create_publisher(Float32MultiArray, '/perception/walls_outside_3d', 10)
 
         # 2. File Reading Setup
-        self.circle_file = os.path.expanduser("~/ros2_ws/src/perception/circle_coords.txt")
+        self.circle_file = os.path.expanduser("/rs2_ws/src/perception/circle_coords.txt")
         self.saved_coords = {} # Stores (gx, gy) -> (x, y, z)
         self.load_circle_coords()
 
@@ -336,7 +336,7 @@ class CircleDetectorNode(Node):
             rs.config.enable_device_from_file(self.config, bag_file, repeat_playback=False)
         else:
             self.get_logger().info("Using LIVE camera")
-            self.config.enable_stream(rs.stream.color, 1280, 720, rs.format.bgr8, 30)
+            self.config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 15)
 
         self.profile = self.pipeline.start(self.config)
 
