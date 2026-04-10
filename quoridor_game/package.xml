@@ -2,9 +2,9 @@
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>quoridor_game</name>
-  <version>0.0.0</version>
+  <version>0.1.1</version>
   <description>Quoridor game control subsystem for UR3e robot</description>
-  <maintainer email="bineth@todo.todo">bineth</maintainer>
+  <maintainer email="bineth.mandiv@gmail.com">Bineth</maintainer>
   <license>TODO: License declaration</license>
 
   <exec_depend>rclpy</exec_depend>
