@@ -28,6 +28,12 @@ add_executable(pose_test src/pose_test.cpp)
 add_executable(get_pose src/get_pose.cpp)
 add_executable(gripper src/gripper.cpp)
 add_executable(calibration_move src/calibration_move.cpp)
+add_executable(record_waypoints src/record_waypoints.cpp)
+
+# Existing logger
+add_executable(save_current_state src/save_current_state.cpp)
+
+add_executable(replay_and_save src/replay_and_save.cpp)
 
 # -------------------- C++ Standards --------------------
 target_compile_features(control PUBLIC c_std_99 cxx_std_17)
@@ -35,6 +41,9 @@ target_compile_features(pose_test PUBLIC c_std_99 cxx_std_17)
 target_compile_features(get_pose PUBLIC c_std_99 cxx_std_17)
 target_compile_features(gripper PUBLIC c_std_99 cxx_std_17)
 target_compile_features(calibration_move PUBLIC c_std_99 cxx_std_17)
+target_compile_features(record_waypoints PUBLIC c_std_99 cxx_std_17)
+target_compile_features(save_current_state PUBLIC c_std_99 cxx_std_17)
+target_compile_features(replay_and_save PUBLIC c_std_99 cxx_std_17)
 
 # -------------------- Dependencies --------------------
 ament_target_dependencies(
@@ -75,6 +84,27 @@ ament_target_dependencies(
   geometry_msgs
 )
 
+ament_target_dependencies(
+  record_waypoints
+  rclcpp
+  moveit_ros_planning_interface
+  geometry_msgs
+)
+
+ament_target_dependencies(
+  save_current_state
+  rclcpp
+  moveit_ros_planning_interface
+  geometry_msgs
+)
+
+# ✅ NEW
+ament_target_dependencies(
+  replay_and_save
+  rclcpp
+  moveit_ros_planning_interface
+  geometry_msgs
+)
 
 # -------------------- Install Targets --------------------
 install(TARGETS control
@@ -94,6 +124,18 @@ install(TARGETS gripper
 )
 
 install(TARGETS calibration_move
+  DESTINATION lib/${PROJECT_NAME}
+)
+
+install(TARGETS record_waypoints
+  DESTINATION lib/${PROJECT_NAME}
+)
+
+install(TARGETS save_current_state
+  DESTINATION lib/${PROJECT_NAME}
+)
+
+install(TARGETS replay_and_save
   DESTINATION lib/${PROJECT_NAME}
 )
 

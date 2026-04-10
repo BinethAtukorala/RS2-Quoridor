@@ -46,7 +46,7 @@ int main(int argc, char * argv[])
         double table_x = 1.0;
         double table_y = 1.0;
         double table_z = 0.1;
-        double back_offset = 0.3;
+        double back_offset = 0.6;
         double side_offset = 0.6;
         double wall_height = 1.0;
     } workspace;
@@ -177,7 +177,7 @@ int main(int argc, char * argv[])
     object_colors.push_back(right_color);
 
     // Apply collision objects
-    planning_scene_interface.applyCollisionObjects(collision_objects);
+    // planning_scene_interface.applyCollisionObjects(collision_objects);
 
     // Publish colors to PlanningScene for RViz
     auto scene_pub = node->create_publisher<moveit_msgs::msg::PlanningScene>("planning_scene", 10);
@@ -199,14 +199,50 @@ int main(int argc, char * argv[])
     // target_pose.orientation.y = 0.422;
     // target_pose.orientation.z = 0.567;
     // target_pose.orientation.w = -0.422;
+ 
+    // target_pose.position.x = -0.092;  // example pose WORKS
+    // target_pose.position.y = 0.365;
+    // target_pose.position.z = 0.169;
+    // target_pose.orientation.x = 0.729;
+    // target_pose.orientation.y = 0.685;
+    // target_pose.orientation.z = 0.004;
+    // target_pose.orientation.w = 0.014;
 
-    target_pose.position.x = -0.092;  // example pose
-    target_pose.position.y = 0.365;
-    target_pose.position.z = 0.169;
-    target_pose.orientation.x = 0.729;
-    target_pose.orientation.y = 0.685;
-    target_pose.orientation.z = 0.004;
-    target_pose.orientation.w = 0.014;
+    // target_pose.position.x = 0.22750182;  // example pose WORKS
+    // target_pose.position.y = -0.16011118;
+    // target_pose.position.z = 0.20633254;
+    // target_pose.orientation.x = 0.00951885;
+    // target_pose.orientation.y = -0.00420109;
+    // target_pose.orientation.z = 0.70902012;
+    // target_pose.orientation.w = 0.70511149;
+
+    // Bottom right grid
+    // target_pose.position.x =  0.23244277;  // example pose WORKS
+    // target_pose.position.y = -0.15387589;
+    // target_pose.position.z = 0.20658625;
+    // target_pose.orientation.x = 0.70839272;
+    // target_pose.orientation.y = 0.70573302;
+    // target_pose.orientation.z = -0.00712423;
+    // target_pose.orientation.w = -0.00836031;
+
+    // target_pose.position.x =  -0.02623808;  // example pose WORKS
+    // target_pose.position.y = 0.10538764;
+    // target_pose.position.z = 0.21221205;
+    // target_pose.orientation.x = 0.70839272;
+    // target_pose.orientation.y = 0.70573302;
+    // target_pose.orientation.z = -0.00712423;
+    // target_pose.orientation.w = -0.00836031;
+
+    target_pose.position.x =  0.43022458;  // example pose WORKS
+    target_pose.position.y = 0.09734114;
+    target_pose.position.z = 0.23432327;
+    target_pose.orientation.x = -0.50130461;
+    target_pose.orientation.y = -0.49590339;
+    target_pose.orientation.z = 0.49546997;
+    target_pose.orientation.w = 0.50723074;
+
+
+
 
     // target_pose.position.x = -0.09;  // example pose
     // target_pose.position.y = 0.441;
