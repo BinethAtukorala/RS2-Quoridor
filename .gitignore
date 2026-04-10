@@ -3,3 +3,4 @@ __init__.py
 *.pyc
 .vscode/
 __pycache__/
+rosbag/
