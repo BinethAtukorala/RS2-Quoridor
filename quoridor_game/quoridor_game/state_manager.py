@@ -2,6 +2,7 @@ import json
 
 import rclpy
 from rclpy.node import Node
+from rclpy.action import ActionClient
 from std_msgs.msg import String, Int32MultiArray
 from threading import Lock
 import numpy as np
@@ -14,6 +15,9 @@ from quoridor_game.quoridor_utils import (
     QuoridorBoard,
     Wall,
 )
+
+from quoridor_interfaces.action import BotMove
+from geometry_msgs.msg import Pose
 
 
 class StateManager(Node):
@@ -40,9 +44,9 @@ class StateManager(Node):
             String, '/quoridor/board_state', 10)
         self.pub_compute_request = self.create_publisher(
             String, '/quoridor/compute_move_request', 10)
-        # Placeholder: move execution subsystem subscribes here
-        self.pub_bot_execute = self.create_publisher(
-            String, '/quoridor/bot_execute', 10)
+
+        #action client
+        self._bot_execute_client = ActionClient(self, BotMove, '/quoridor/bot_execute')
 
         # --- subscribers ---
         self.sub_player_move = self.create_subscription(
@@ -132,15 +136,50 @@ class StateManager(Node):
 
         self.get_logger().info(f'Bot move applied: {msg.data}')
 
-        # Forward to move execution subsystem (placeholder)
-        exec_msg = String()
-        exec_msg.data = json.dumps(move.to_dict())
-        self.pub_bot_execute.publish(exec_msg)
+        if move.move_type == MoveType.PAWN:
+            piece_type = 'p'
+        elif move.move_type == MoveType.WALL:
+            piece_type = 'h' if move.wall.orientation == Orientation.HORIZONTAL else 'v'
+        else:
+            piece_type = 'p'
+
+        goal = BotMove.Goal()
+        goal.piece_type = piece_type
+        goal.start = Pose()
+        goal.start.orientation.w = 1.0
+        goal.end = Pose()
+        goal.end.orientation.w = 1.0
+
+        if not self._bot_execute_client.wait_for_server(timeout_sec=2.0):
+            self.get_logger().error('Control action server not available')
+            self.publish_board_state()
+            return
+
+        future = self._bot_execute_client.send_goal_async(
+            goal, feedback_callback=self._on_execute_feedback)
+        future.add_done_callback(self._on_execute_response)
 
         self.publish_board_state()
 
         if self.board.game_status != "in_progress":
             self.get_logger().info(f'Game over -- {self.board.game_status}')
+
+    def _on_execute_feedback(self, feedback_msg):
+        self.get_logger().info(
+            f'Robot progress: {feedback_msg.feedback.progress * 100:.0f}%')
+
+    def _on_execute_response(self, future):
+        handle = future.result()
+        if not handle.accepted:
+            self.get_logger().error('BotMove goal rejected by control node')
+            return
+        handle.get_result_async().add_done_callback(self._on_execute_result)
+
+    def _on_execute_result(self, future):
+        if future.result().result.result:
+            self.get_logger().info('Robot move completed successfully')
+        else:
+            self.get_logger().error('Robot move failed')
 
     # ------------------------------------------------------------------ #
     #  Game commands                                                      #
