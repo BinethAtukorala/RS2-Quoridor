@@ -6,44 +6,92 @@
 #include <string>
 
 #include <rclcpp/rclcpp.hpp>
+#include <rclcpp_action/rclcpp_action.hpp>
 #include <moveit/move_group_interface/move_group_interface.h>
 #include <std_msgs/msg/string.hpp>
 #include <geometry_msgs/msg/pose.hpp>
 
+#include "quoridor_interfaces/action/bot_move.hpp"
+
 double deg2rad(double deg) { return deg * M_PI / 180.0; }
 
-std::vector<double> toRadians(const std::vector<double>& degs)
-{
-    std::vector<double> rads;
-    for (double d : degs)
-        rads.push_back(deg2rad(d));
-    return rads;
-}
+std::vector<double> PERCEPTION_WAYPOINT = {
+    deg2rad(-72.94),
+    deg2rad(-109.89),
+    deg2rad(-9.94),
+    deg2rad(-150.05),
+    deg2rad(90.0),
+    deg2rad(132.49)
+};
 
-bool moveToWaypoint(
+std::vector<double> MOVEMENT_WAYPOINT = {
+    deg2rad(-72.94),
+    deg2rad(-109.89),
+    deg2rad(-9.94),
+    deg2rad(-150.05),
+    deg2rad(90.0),
+    deg2rad(132.49)
+};
+
+constexpr double HOVER_OFFSET_Z = 0.02;
+
+bool moveToJoints(
     moveit::planning_interface::MoveGroupInterface &move_group,
-    const std::vector<double> &target,
+    const std::vector<double> &joints,
     const std::string &name,
     rclcpp::Logger logger)
 {
-    move_group.setJointValueTarget(target);
+    move_group.setJointValueTarget(joints);
+
     moveit::planning_interface::MoveGroupInterface::Plan plan;
     bool success = (move_group.plan(plan) == moveit::core::MoveItErrorCode::SUCCESS);
 
     if (success) {
-        RCLCPP_INFO(logger, "Executing %s", name.c_str());
-        auto exec_result = move_group.execute(plan);
-        if (exec_result != moveit::core::MoveItErrorCode::SUCCESS) {
-            RCLCPP_ERROR(logger, "Execution failed for %s", name.c_str());
+        RCLCPP_INFO(logger, "Executing joints: %s", name.c_str());
+        auto result = move_group.execute(plan);
+        if (result != moveit::core::MoveItErrorCode::SUCCESS) {
+            RCLCPP_ERROR(logger, "Execution failed: %s", name.c_str());
             return false;
         }
     } else {
-        RCLCPP_ERROR(logger, "Planning failed for %s", name.c_str());
+        RCLCPP_ERROR(logger, "Planning failed: %s", name.c_str());
         return false;
     }
-
-    rclcpp::sleep_for(std::chrono::seconds(1));
     return true;
+}
+
+bool moveToPose(
+    moveit::planning_interface::MoveGroupInterface &move_group,
+    const geometry_msgs::msg::Pose &pose,
+    const std::string &name,
+    rclcpp::Logger logger)
+{
+    move_group.setPoseTarget(pose);
+
+    moveit::planning_interface::MoveGroupInterface::Plan plan;
+    auto error_code = move_group.plan(plan);
+    bool success = (error_code == moveit::core::MoveItErrorCode::SUCCESS);
+
+    if (success) {
+        RCLCPP_INFO(logger, "Executing pose: %s", name.c_str());
+        auto result = move_group.execute(plan);
+        if (result != moveit::core::MoveItErrorCode::SUCCESS) {
+            RCLCPP_ERROR(logger, "Execution failed: %s", name.c_str());
+            return false;
+        }
+    } else {
+        RCLCPP_ERROR(logger, "Planning failed: %s (code: %d)",
+                     name.c_str(), error_code.val);
+        return false;
+    }
+    return true;
+}
+
+geometry_msgs::msg::Pose hoverPose(const geometry_msgs::msg::Pose &pose)
+{
+    geometry_msgs::msg::Pose h = pose;
+    h.position.z += HOVER_OFFSET_Z;
+    return h;
 }
 
 int main(int argc, char * argv[])
@@ -56,9 +104,9 @@ int main(int argc, char * argv[])
     );
 
     auto logger = node->get_logger();
-    rclcpp::executors::SingleThreadedExecutor executor;
+
+    rclcpp::executors::MultiThreadedExecutor executor;
     executor.add_node(node);
-    std::thread([&executor]() { executor.spin(); }).detach();
 
     using moveit::planning_interface::MoveGroupInterface;
     MoveGroupInterface move_group(node, "ur_onrobot_manipulator");
@@ -68,105 +116,140 @@ int main(int argc, char * argv[])
 
     rclcpp::sleep_for(std::chrono::seconds(2));
 
-    // -------------------- GRIPPER COMMAND --------------------
     auto gripper_pub = node->create_publisher<std_msgs::msg::String>(
-        "/gripper/command", 10
-    );
+        "/gripper/command", 10);
 
     bool gripper_done = false;
+
     auto gripper_sub = node->create_subscription<std_msgs::msg::String>(
-        "/gripper/status", 10, [&](std_msgs::msg::String::SharedPtr msg){
-            // Update done for any gripper command that finishes
-            if(msg->data == "done" || msg->data == "success" || msg->data == "fail" || msg->data == "wrong")
+        "/gripper/status", 10,
+        [&](std_msgs::msg::String::SharedPtr msg) {
+            if (msg->data == "done"    || msg->data == "success" ||
+                msg->data == "fail"    || msg->data == "wrong")
                 gripper_done = true;
         }
     );
 
-    auto publishGripperCommand = [&](const std::string &cmd){
+    auto publishGripperCommand = [&](const std::string &cmd) {
         gripper_done = false;
         std_msgs::msg::String msg;
         msg.data = cmd;
-        RCLCPP_ERROR(logger, "DEBUG: COMMAND = %s", cmd.c_str());
         gripper_pub->publish(msg);
-        RCLCPP_INFO(logger, "Sent gripper command: %s", cmd.c_str());
-
-        // wait for gripper to actually finish the action
-        rclcpp::Rate rate(20); // faster check
-        while(!gripper_done && rclcpp::ok())
+        RCLCPP_INFO(logger, "Gripper: %s", cmd.c_str());
+        rclcpp::Rate rate(20);
+        while (!gripper_done && rclcpp::ok())
             rate.sleep();
     };
 
-    // // -------------------- WAYPOINTS --------------------
-    std::vector<double> wp1 = toRadians({-72.94, -109.89, -9.94, -150.05, 90, 132.49});
-    std::vector<double> wp2 = toRadians({-80.41, -123.65, -32.68, -114.91, 89.26, 97.76});
-    std::vector<double> wp3 = toRadians({-80.41, -118.73, -60.36, -92.16, 89.28, 97.77});
-    std::vector<double> wp4 = toRadians({-80.41, -123.65, -32.68, -114.91, 89.26, 97.76});
-    std::vector<double> wp5 = toRadians({-72.94, -109.89, -9.94, -150.05, 90, 132.4});
-    std::vector<double> wp6 = toRadians({-69.84, -121.42, -31.66, -117.77, 87.17, 107.72});
-    std::vector<double> wp7 = toRadians({-69.84, -115.24, -65.25, -90.35, 87.19, 107.73});
-    std::vector<double> wp8 = toRadians({-69.84, -121.42, -31.66, -117.77, 87.17, 107.72});
-    // // ===== Declare all waypoints =====
-    // std::vector<double> wp1  = toRadians({-51.71, -77.21, -57.57, -132.27, 88.43, 47.16});
-    // std::vector<double> wp2  = toRadians({-67.23, -82.90, -66.70, -124.73, 92.55, 27.23});
-    // std::vector<double> wp3  = toRadians({-149.04, -106.06, -64.80, -124.96, 122.64, 267.68});
-    // std::vector<double> wp4  = toRadians({-169.47, -112.07, -63.04, -122.01, 118.40, 262.45});
-    // std::vector<double> wp5  = toRadians({5.15, -118.24, -43.78, -146.88, 69.67, 152.21});
-    // std::vector<double> wp6  = toRadians({0, -90, 0, -90, 0, 0});
-    // std::vector<double> wp7  = toRadians({2.12, -137.95, -1.93, -171.61, 79.04, 62.98});
-    // std::vector<double> wp8  = toRadians({-65.50, -71.93, -79.91, -117.71, 100.82, 44.27});
-    // std::vector<double> wp9  = toRadians({-130.91, -115.49, -47.46, -134.52, 122.94, 341.55});
-    // std::vector<double> wp10 = toRadians({-153.98, -133.57, -26.99, -150.92, 117.23, 328.10});
-    // std::vector<double> wp11 = toRadians({1.41, -122.57, -53.17, -142.15, 78.92, 85.11});
-    // std::vector<double> wp12 = toRadians({-61.06, -128.71, -7.91, -154.12, 93.08, 26.51});
-    // std::vector<double> wp13 = toRadians({-96.78, -130.48, -4.82, -157.74, 112.64, 12.02});
-    // std::vector<double> wp14 = toRadians({-44.04, -133.01, 8.49, -167.27, 85.40, 16.76});
-    // std::vector<double> wp15 = toRadians({-90.29, -30.27, -93.90, -122.45, 105.13, 48.85});
-    // std::vector<double> wp16 = toRadians({-118.09, -120.95, -29.98, -142.84, 114.54, 15.19});
-    // std::vector<double> wp17 = toRadians({-25.53, -114.77, -18.44, -158.34, 81.86, 36.20});
-    // std::vector<double> wp18 = toRadians({-125.10, -71.30, -128.24, -57.48, 118.95, 284.37});
-    // std::vector<double> wp19 = toRadians({-7.66, -82.62, -91.64, -128.83, 75.47, 56.78});
-    // std::vector<double> wp20 = toRadians({-52.52, -92.71, 1.43, -173.62, 84.10, 15.67});
+    bool first_move = true;
 
-    // // ===== Move to each waypoint =====
-    // moveToWaypoint(move_group, wp1,  "Waypoint 1",  logger);
-    // moveToWaypoint(move_group, wp2,  "Waypoint 2",  logger);
-    // moveToWaypoint(move_group, wp3,  "Waypoint 3",  logger);
-    // moveToWaypoint(move_group, wp4,  "Waypoint 4",  logger);
-    // moveToWaypoint(move_group, wp5,  "Waypoint 5",  logger);
-    // moveToWaypoint(move_group, wp6,  "Waypoint 6",  logger);
-    // moveToWaypoint(move_group, wp7,  "Waypoint 7",  logger);
-    // moveToWaypoint(move_group, wp8,  "Waypoint 8",  logger);
-    // moveToWaypoint(move_group, wp9,  "Waypoint 9",  logger);
-    // moveToWaypoint(move_group, wp10, "Waypoint 10", logger);
-    // moveToWaypoint(move_group, wp11, "Waypoint 11", logger);
-    // moveToWaypoint(move_group, wp12, "Waypoint 12", logger);
-    // moveToWaypoint(move_group, wp13, "Waypoint 13", logger);
-    // moveToWaypoint(move_group, wp14, "Waypoint 14", logger);
-    // moveToWaypoint(move_group, wp15, "Waypoint 15", logger);
-    // moveToWaypoint(move_group, wp16, "Waypoint 16", logger);
-    // moveToWaypoint(move_group, wp17, "Waypoint 17", logger);
-    // moveToWaypoint(move_group, wp18, "Waypoint 18", logger);
-    // moveToWaypoint(move_group, wp19, "Waypoint 19", logger);
-    // moveToWaypoint(move_group, wp20, "Waypoint 20", logger);
+    using BotMove    = quoridor_interfaces::action::BotMove;
+    using GoalHandle = rclcpp_action::ServerGoalHandle<BotMove>;
 
-    
-    // -------------------- SEQUENCE --------------------
-    moveToWaypoint(move_group, wp1, "Waypoint 1", logger);
-    moveToWaypoint(move_group, wp2, "Waypoint 2", logger);
+    auto send_feedback = [&](
+        std::shared_ptr<GoalHandle> gh,
+        float progress,
+        const std::string &step)
+    {
+        auto fb = std::make_shared<BotMove::Feedback>();
+        fb->progress = progress;
+        gh->publish_feedback(fb);
+        RCLCPP_INFO(logger, "[%.0f%%] %s", progress * 100.0f, step.c_str());
+    };
 
-    publishGripperCommand("open");          // fully close gripper
-    moveToWaypoint(move_group, wp3, "Waypoint 3", logger);
+    auto execute_cb = [&](std::shared_ptr<GoalHandle> gh)
+    {
+        const auto &goal = gh->get_goal();
+        auto result = std::make_shared<BotMove::Result>();
 
-    publishGripperCommand("pickup_pawn");    // pickup wall safely
-    moveToWaypoint(move_group, wp4, "Waypoint 4", logger);
+        auto abort = [&](const std::string &reason) {
+            result->result = false;
+            gh->abort(result);
+            RCLCPP_ERROR(logger, "BotMove ABORTED: %s", reason.c_str());
+        };
 
-    moveToWaypoint(move_group, wp5, "Waypoint 5", logger);
-    moveToWaypoint(move_group, wp6, "Waypoint 6", logger);
-    moveToWaypoint(move_group, wp7, "Waypoint 7", logger);
+        const bool is_wall = goal->wall;
+        RCLCPP_INFO(logger, "BotMove received — %s move", is_wall ? "WALL" : "PAWN");
 
-    publishGripperCommand("drop_pawn");      // drop wall safely
-    moveToWaypoint(move_group, wp8, "Waypoint 8", logger);
+        geometry_msgs::msg::Pose start_hover = hoverPose(goal->start);
+        geometry_msgs::msg::Pose end_hover   = hoverPose(goal->end);
 
+        if (first_move) {
+            send_feedback(gh, 0.05f, "Moving to perception waypoint (first move)");
+            if (!moveToJoints(move_group, PERCEPTION_WAYPOINT, "perception_waypoint", logger))
+                return abort("Failed at perception waypoint");
+
+            publishGripperCommand("open");
+            first_move = false;
+        }
+
+        send_feedback(gh, 0.18f, "Moving above start pose");
+        if (!moveToPose(move_group, start_hover, "start_hover", logger))
+            return abort("Failed at start hover");
+
+        send_feedback(gh, 0.27f, "Descending to start pose");
+        if (!moveToPose(move_group, goal->start, "start_pose", logger))
+            return abort("Failed at start pose");
+
+        send_feedback(gh, 0.36f, is_wall ? "Gripping wall" : "Gripping pawn");
+        publishGripperCommand(is_wall ? "pickup_wall" : "pickup_pawn");
+
+        send_feedback(gh, 0.45f, "Lifting to start hover");
+        if (!moveToPose(move_group, start_hover, "start_hover_lift", logger))
+            return abort("Failed lifting to start hover");
+
+        send_feedback(gh, 0.54f, "Moving to transit waypoint");
+        if (!moveToJoints(move_group, MOVEMENT_WAYPOINT, "movement_waypoint", logger))
+            return abort("Failed at transit waypoint");
+
+        send_feedback(gh, 0.63f, "Moving above end pose");
+        if (!moveToPose(move_group, end_hover, "end_hover", logger))
+            return abort("Failed at end hover");
+
+        send_feedback(gh, 0.72f, "Descending to end pose");
+        if (!moveToPose(move_group, goal->end, "end_pose", logger))
+            return abort("Failed at end pose");
+
+        send_feedback(gh, 0.81f, is_wall ? "Dropping wall" : "Dropping pawn");
+        publishGripperCommand(is_wall ? "drop_wall" : "drop_pawn");
+
+        send_feedback(gh, 0.90f, "Lifting to end hover");
+        if (!moveToPose(move_group, end_hover, "end_hover_lift", logger))
+            return abort("Failed lifting to end hover");
+
+        send_feedback(gh, 1.00f, "Returning to perception waypoint");
+        if (!moveToJoints(move_group, PERCEPTION_WAYPOINT, "perception_waypoint_return", logger))
+            return abort("Failed returning to perception waypoint");
+
+        result->result = true;
+        gh->succeed(result);
+        RCLCPP_INFO(logger, "BotMove completed successfully");
+    };
+
+    auto action_server = rclcpp_action::create_server<BotMove>(
+        node,
+        "/quoridor/bot_execute",
+
+        [](const rclcpp_action::GoalUUID &,
+           std::shared_ptr<const BotMove::Goal>) {
+            return rclcpp_action::GoalResponse::ACCEPT_AND_EXECUTE;
+        },
+
+        [](std::shared_ptr<GoalHandle>) {
+            return rclcpp_action::CancelResponse::ACCEPT;
+        },
+
+        [&execute_cb](std::shared_ptr<GoalHandle> gh) {
+            std::thread([&execute_cb, gh]() {
+                execute_cb(gh);
+            }).detach();
+        }
+    );
+
+    RCLCPP_INFO(logger,
+        "Control node ready — action server on /quoridor/bot_execute");
+
+    executor.spin();
     rclcpp::shutdown();
     return 0;
 }
