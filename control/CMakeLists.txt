@@ -11,9 +11,9 @@ include_directories(
   ${realsense2_INCLUDE_DIRS}
 )
 
-# -------------------- Packages --------------------
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
+find_package(rclcpp_action REQUIRED)
 find_package(moveit_ros_planning_interface REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
@@ -21,21 +21,17 @@ find_package(sensor_msgs REQUIRED)
 find_package(OpenCV REQUIRED)
 find_package(realsense2 REQUIRED)
 find_package(cv_bridge REQUIRED)
+find_package(quoridor_interfaces REQUIRED)
 
-# -------------------- Executables --------------------
 add_executable(control src/control.cpp)
 add_executable(pose_test src/pose_test.cpp)
 add_executable(get_pose src/get_pose.cpp)
 add_executable(gripper src/gripper.cpp)
 add_executable(calibration_move src/calibration_move.cpp)
 add_executable(record_waypoints src/record_waypoints.cpp)
-
-# Existing logger
 add_executable(save_current_state src/save_current_state.cpp)
-
 add_executable(replay_and_save src/replay_and_save.cpp)
 
-# -------------------- C++ Standards --------------------
 target_compile_features(control PUBLIC c_std_99 cxx_std_17)
 target_compile_features(pose_test PUBLIC c_std_99 cxx_std_17)
 target_compile_features(get_pose PUBLIC c_std_99 cxx_std_17)
@@ -45,13 +41,14 @@ target_compile_features(record_waypoints PUBLIC c_std_99 cxx_std_17)
 target_compile_features(save_current_state PUBLIC c_std_99 cxx_std_17)
 target_compile_features(replay_and_save PUBLIC c_std_99 cxx_std_17)
 
-# -------------------- Dependencies --------------------
 ament_target_dependencies(
   control
   rclcpp
+  rclcpp_action
   moveit_ros_planning_interface
   std_msgs
   geometry_msgs
+  quoridor_interfaces
 )
 
 ament_target_dependencies(
@@ -98,7 +95,6 @@ ament_target_dependencies(
   geometry_msgs
 )
 
-# ✅ NEW
 ament_target_dependencies(
   replay_and_save
   rclcpp
@@ -106,36 +102,15 @@ ament_target_dependencies(
   geometry_msgs
 )
 
-# -------------------- Install Targets --------------------
-install(TARGETS control
-  DESTINATION lib/${PROJECT_NAME}
-)
-
-install(TARGETS pose_test
-  DESTINATION lib/${PROJECT_NAME}
-)
-
-install(TARGETS get_pose
-  DESTINATION lib/${PROJECT_NAME}
-)
-
-install(TARGETS gripper
-  DESTINATION lib/${PROJECT_NAME}
-)
-
-install(TARGETS calibration_move
-  DESTINATION lib/${PROJECT_NAME}
-)
-
-install(TARGETS record_waypoints
-  DESTINATION lib/${PROJECT_NAME}
-)
-
-install(TARGETS save_current_state
-  DESTINATION lib/${PROJECT_NAME}
-)
-
-install(TARGETS replay_and_save
+install(TARGETS
+  control
+  pose_test
+  get_pose
+  gripper
+  calibration_move
+  record_waypoints
+  save_current_state
+  replay_and_save
   DESTINATION lib/${PROJECT_NAME}
 )
 
@@ -149,7 +124,6 @@ install(PROGRAMS
   DESTINATION lib/${PROJECT_NAME}
 )
 
-# -------------------- Testing / Lint --------------------
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
   set(ament_cmake_copyright_FOUND TRUE)
