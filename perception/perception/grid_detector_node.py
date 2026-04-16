@@ -684,11 +684,12 @@ class GridDetectorNode(Node):
 
         self.board = self.QuoridorBoard()
 
-        self.grid_file = os.path.expanduser("~/ros2_ws/src/perception/grid_coords.txt")
+        # self.grid_file = os.path.expanduser("~/ros2_ws/src/perception/grid_coords.txt")
+        self.grid_file = os.path.expanduser("/rs2_ws/src/perception/pawn_coords.txt")
         self.grid_lookup = {}
         self.load_grid_coordinates()
 
-        self.intrinsics_file = os.path.expanduser("~/ros2_ws/src/perception/camera_intrinsics.json")
+        self.intrinsics_file = os.path.expanduser("/rs2_ws/src/perception/camera_intrinsics.json")
         with open(self.intrinsics_file, "r") as f:
             intr = json.load(f)
         self.fx = intr["fx"]
