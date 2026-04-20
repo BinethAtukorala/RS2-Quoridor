@@ -2,6 +2,7 @@
 #include <thread>
 #include <chrono>
 #include <fstream>
+#include <filesystem>
 #include <vector>
 
 #include <rclcpp/rclcpp.hpp>
@@ -19,7 +20,6 @@ int main(int argc, char * argv[])
 
     auto logger = node->get_logger();
 
-    // Spin executor
     rclcpp::executors::SingleThreadedExecutor executor;
     executor.add_node(node);
     std::thread([&executor]() { executor.spin(); }).detach();
@@ -29,29 +29,24 @@ int main(int argc, char * argv[])
 
     rclcpp::sleep_for(std::chrono::seconds(2));
 
-    // ================= GET JOINTS =================
     std::vector<double> joints = move_group.getCurrentJointValues();
 
-    // ================= GET POSE =================
     geometry_msgs::msg::Pose pose;
     try {
-        pose = move_group.getCurrentPose("tool0").pose;
+        pose = move_group.getCurrentPose("gripper_tcp").pose;
     }
     catch (...) {
         RCLCPP_ERROR(logger, "Failed to get pose");
         return 1;
     }
 
-    // ================= FILE (APPEND MODE) =================
-    std::ofstream file("quoridor_poses.txt", std::ios::app);
+    RCLCPP_INFO(logger, "CWD: %s", std::filesystem::current_path().c_str());
+
+    std::ofstream file("box_poses.txt", std::ios::app);
     if (!file.is_open()) {
         RCLCPP_ERROR(logger, "Failed to open file!");
         return 1;
     }
-
-    // ================= WRITE =================
-    // Format:
-    // j1,j2,j3,j4,j5,j6,x,y,z,qx,qy,qz,qw
 
     for (size_t i = 0; i < joints.size(); i++)
     {

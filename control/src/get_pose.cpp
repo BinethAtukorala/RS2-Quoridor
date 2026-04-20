@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <map>
+#include <limits>
 
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/joint_state.hpp>
@@ -46,7 +47,6 @@ int main(int argc, char * argv[])
         return 1;
     }
 
-    // Spin executor
     rclcpp::executors::SingleThreadedExecutor executor;
     executor.add_node(node);
     std::thread spinner([&executor]() { executor.spin(); });
@@ -64,7 +64,7 @@ int main(int argc, char * argv[])
         RCLCPP_INFO(node->get_logger(), "Mode 1: MoveIt Pose");
 
         rclcpp::Rate rate(10);
-        for(int i=0; i<50; ++i) // wait up to 5 seconds
+        for(int i=0; i<50; ++i)
         {
             try
             {
@@ -82,7 +82,6 @@ int main(int argc, char * argv[])
     else if(mode == 2){
         RCLCPP_INFO(node->get_logger(), "Mode 2: Real Robot Pose (FK from /joint_states)");
 
-        // Robot model loader
         robot_model_loader::RobotModelLoader robot_model_loader(node);
         auto robot_model = robot_model_loader.getModel();
         moveit::core::RobotState robot_state(robot_model);
@@ -102,7 +101,6 @@ int main(int argc, char * argv[])
         rclcpp::Rate rate(10);
         for(int i=0; i<50; ++i)
         {
-            // rclcpp::spin_some(node);
             if(joint_received){
                 robot_state.setVariablePositions(joint_positions);
                 const moveit::core::LinkModel* ee_link = robot_model->getLinkModel(move_group.getEndEffectorLink());
@@ -117,11 +115,11 @@ int main(int argc, char * argv[])
     if(got_pose)
     {
         RCLCPP_INFO(node->get_logger(), "Current Pose:");
-        RCLCPP_INFO(node->get_logger(), "X: %.3f Y: %.3f Z: %.3f",
+        RCLCPP_INFO(node->get_logger(), "X: %.7f Y: %.7f Z: %.7f",
                     current_pose.position.x,
                     current_pose.position.y,
                     current_pose.position.z);
-        RCLCPP_INFO(node->get_logger(), "Orientation (x,y,z,w): %.3f, %.3f, %.3f, %.3f",
+        RCLCPP_INFO(node->get_logger(), "Orientation (x,y,z,w): %.7f, %.7f, %.7f, %.7f",
                     current_pose.orientation.x,
                     current_pose.orientation.y,
                     current_pose.orientation.z,
