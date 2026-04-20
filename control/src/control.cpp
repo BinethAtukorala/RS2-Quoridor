@@ -16,24 +16,66 @@
 double deg2rad(double deg) { return deg * M_PI / 180.0; }
 
 std::vector<double> PERCEPTION_WAYPOINT = {
-    deg2rad(-72.94),
-    deg2rad(-109.89),
-    deg2rad(-9.94),
-    deg2rad(-150.05),
-    deg2rad(90.0),
-    deg2rad(132.49)
+    deg2rad(-72.94), deg2rad(-109.89), deg2rad(-9.94),
+    deg2rad(-150.05), deg2rad(90.0), deg2rad(132.49)
 };
 
-std::vector<double> MOVEMENT_WAYPOINT = {
-    deg2rad(-72.94),
-    deg2rad(-109.89),
-    deg2rad(-9.94),
-    deg2rad(-150.05),
-    deg2rad(90.0),
-    deg2rad(132.49)
-};
+std::vector<double> MOVEMENT_WAYPOINT = PERCEPTION_WAYPOINT;
 
-constexpr double HOVER_OFFSET_Z = 0.02;
+constexpr double HOVER_OFFSET_Z = 0.03;
+
+geometry_msgs::msg::Quaternion makeQuat(double x, double y, double z, double w)
+{
+    geometry_msgs::msg::Quaternion q;
+    q.x = x; q.y = y; q.z = z; q.w = w;
+    return q;
+}
+
+const geometry_msgs::msg::Quaternion ORI_PAWN =
+    makeQuat(0.711, 0.703, -0.004, -0.012);
+
+const geometry_msgs::msg::Quaternion ORI_WALL =
+    makeQuat(0.707, 0.707, 0.0, 0.0);
+
+geometry_msgs::msg::Pose hoverPose(const geometry_msgs::msg::Pose &pose)
+{
+    geometry_msgs::msg::Pose h = pose;
+    h.position.z += HOVER_OFFSET_Z;
+    return h;
+}
+
+geometry_msgs::msg::Pose withOrientation(
+    geometry_msgs::msg::Pose pose,
+    const geometry_msgs::msg::Quaternion &ori)
+{
+    pose.orientation = ori;
+    return pose;
+}
+
+bool moveCartesian(
+    moveit::planning_interface::MoveGroupInterface &move_group,
+    const geometry_msgs::msg::Pose &target,
+    const std::string &name,
+    rclcpp::Logger logger)
+{
+    std::vector<geometry_msgs::msg::Pose> waypoints = { target };
+
+    moveit_msgs::msg::RobotTrajectory trajectory;
+
+    double fraction = move_group.computeCartesianPath(
+        waypoints, 0.005, 0.0, trajectory);
+
+    if (fraction < 0.9)
+    {
+        RCLCPP_ERROR(logger, "Cartesian failed: %s (%.1f%%)", name.c_str(), fraction * 100);
+        return false;
+    }
+
+    moveit::planning_interface::MoveGroupInterface::Plan plan;
+    plan.trajectory_ = trajectory;
+
+    return move_group.execute(plan) == moveit::core::MoveItErrorCode::SUCCESS;
+}
 
 bool moveToJoints(
     moveit::planning_interface::MoveGroupInterface &move_group,
@@ -44,20 +86,13 @@ bool moveToJoints(
     move_group.setJointValueTarget(joints);
 
     moveit::planning_interface::MoveGroupInterface::Plan plan;
-    bool success = (move_group.plan(plan) == moveit::core::MoveItErrorCode::SUCCESS);
-
-    if (success) {
-        RCLCPP_INFO(logger, "Executing joints: %s", name.c_str());
-        auto result = move_group.execute(plan);
-        if (result != moveit::core::MoveItErrorCode::SUCCESS) {
-            RCLCPP_ERROR(logger, "Execution failed: %s", name.c_str());
-            return false;
-        }
-    } else {
+    if (move_group.plan(plan) != moveit::core::MoveItErrorCode::SUCCESS)
+    {
         RCLCPP_ERROR(logger, "Planning failed: %s", name.c_str());
         return false;
     }
-    return true;
+
+    return move_group.execute(plan) == moveit::core::MoveItErrorCode::SUCCESS;
 }
 
 bool moveToPose(
@@ -69,40 +104,21 @@ bool moveToPose(
     move_group.setPoseTarget(pose);
 
     moveit::planning_interface::MoveGroupInterface::Plan plan;
-    auto error_code = move_group.plan(plan);
-    bool success = (error_code == moveit::core::MoveItErrorCode::SUCCESS);
 
-    if (success) {
-        RCLCPP_INFO(logger, "Executing pose: %s", name.c_str());
-        auto result = move_group.execute(plan);
-        if (result != moveit::core::MoveItErrorCode::SUCCESS) {
-            RCLCPP_ERROR(logger, "Execution failed: %s", name.c_str());
-            return false;
-        }
-    } else {
-        RCLCPP_ERROR(logger, "Planning failed: %s (code: %d)",
-                     name.c_str(), error_code.val);
+    if (move_group.plan(plan) != moveit::core::MoveItErrorCode::SUCCESS)
+    {
+        RCLCPP_ERROR(logger, "Planning failed: %s", name.c_str());
         return false;
     }
-    return true;
-}
 
-geometry_msgs::msg::Pose hoverPose(const geometry_msgs::msg::Pose &pose)
-{
-    geometry_msgs::msg::Pose h = pose;
-    h.position.z += HOVER_OFFSET_Z;
-    return h;
+    return move_group.execute(plan) == moveit::core::MoveItErrorCode::SUCCESS;
 }
 
 int main(int argc, char * argv[])
 {
     rclcpp::init(argc, argv);
 
-    auto node = std::make_shared<rclcpp::Node>(
-        "control",
-        rclcpp::NodeOptions().automatically_declare_parameters_from_overrides(true)
-    );
-
+    auto node = std::make_shared<rclcpp::Node>("control");
     auto logger = node->get_logger();
 
     rclcpp::executors::MultiThreadedExecutor executor;
@@ -123,132 +139,114 @@ int main(int argc, char * argv[])
 
     auto gripper_sub = node->create_subscription<std_msgs::msg::String>(
         "/gripper/status", 10,
-        [&](std_msgs::msg::String::SharedPtr msg) {
-            if (msg->data == "done"    || msg->data == "success" ||
-                msg->data == "fail"    || msg->data == "wrong")
+        [&](std_msgs::msg::String::SharedPtr msg)
+        {
+            if (msg->data == "done" || msg->data == "success")
                 gripper_done = true;
-        }
-    );
+        });
 
-    auto publishGripperCommand = [&](const std::string &cmd) {
-        gripper_done = false;
-        std_msgs::msg::String msg;
-        msg.data = cmd;
-        gripper_pub->publish(msg);
-        RCLCPP_INFO(logger, "Gripper: %s", cmd.c_str());
-        rclcpp::Rate rate(20);
-        while (!gripper_done && rclcpp::ok())
-            rate.sleep();
-    };
-
-    bool first_move = true;
-
-    using BotMove    = quoridor_interfaces::action::BotMove;
-    using GoalHandle = rclcpp_action::ServerGoalHandle<BotMove>;
-
-    auto send_feedback = [&](
-        std::shared_ptr<GoalHandle> gh,
-        float progress,
-        const std::string &step)
+    auto sendGripper = [&](const std::string &cmd)
     {
-        auto fb = std::make_shared<BotMove::Feedback>();
-        fb->progress = progress;
-        gh->publish_feedback(fb);
-        RCLCPP_INFO(logger, "[%.0f%%] %s", progress * 100.0f, step.c_str());
+        gripper_done = false;
+        std_msgs::msg::String m;
+        m.data = cmd;
+        gripper_pub->publish(m);
+
+        rclcpp::Rate r(20);
+        while (!gripper_done && rclcpp::ok()) r.sleep();
     };
+
+    bool first = true;
+
+    using BotMove = quoridor_interfaces::action::BotMove;
+    using GoalHandle = rclcpp_action::ServerGoalHandle<BotMove>;
 
     auto execute_cb = [&](std::shared_ptr<GoalHandle> gh)
     {
         const auto &goal = gh->get_goal();
+
         auto result = std::make_shared<BotMove::Result>();
 
-        auto abort = [&](const std::string &reason) {
+        auto abort = [&](const std::string &msg)
+        {
             result->result = false;
             gh->abort(result);
-            RCLCPP_ERROR(logger, "BotMove ABORTED: %s", reason.c_str());
+            RCLCPP_ERROR(logger, "%s", msg.c_str());
         };
 
-        const bool is_wall = goal->wall;
-        RCLCPP_INFO(logger, "BotMove received — %s move", is_wall ? "WALL" : "PAWN");
+        bool is_wall = goal->wall;
 
-        geometry_msgs::msg::Pose start_hover = hoverPose(goal->start);
-        geometry_msgs::msg::Pose end_hover   = hoverPose(goal->end);
+        const auto &ORI = is_wall ? ORI_WALL : ORI_PAWN;
 
-        if (first_move) {
-            send_feedback(gh, 0.05f, "Moving to perception waypoint (first move)");
-            if (!moveToJoints(move_group, PERCEPTION_WAYPOINT, "perception_waypoint", logger))
-                return abort("Failed at perception waypoint");
+        geometry_msgs::msg::Pose start = withOrientation(goal->start, ORI);
+        geometry_msgs::msg::Pose end   = withOrientation(goal->end, ORI);
 
-            publishGripperCommand("open");
-            first_move = false;
+        geometry_msgs::msg::Pose start_hover = hoverPose(start);
+        geometry_msgs::msg::Pose end_hover   = hoverPose(end);
+
+        if (first)
+        {
+            if (!moveToJoints(move_group, PERCEPTION_WAYPOINT,
+                "perception", logger))
+                return abort("perception failed");
+
+            sendGripper("open");
+            first = false;
         }
 
-        send_feedback(gh, 0.18f, "Moving above start pose");
-        if (!moveToPose(move_group, start_hover, "start_hover", logger))
-            return abort("Failed at start hover");
+        if (!moveToPose(move_group, start_hover,
+            "start hover", logger))
+            return abort("start hover failed");
 
-        send_feedback(gh, 0.27f, "Descending to start pose");
-        if (!moveToPose(move_group, goal->start, "start_pose", logger))
-            return abort("Failed at start pose");
+        if (!moveCartesian(move_group, start,
+            "descend start", logger))
+            return abort("cartesian descend failed");
 
-        send_feedback(gh, 0.36f, is_wall ? "Gripping wall" : "Gripping pawn");
-        publishGripperCommand(is_wall ? "pickup_wall" : "pickup_pawn");
+        sendGripper(is_wall ? "pickup_wall" : "pickup_pawn");
 
-        send_feedback(gh, 0.45f, "Lifting to start hover");
-        if (!moveToPose(move_group, start_hover, "start_hover_lift", logger))
-            return abort("Failed lifting to start hover");
+        if (!moveCartesian(move_group, start_hover,
+            "lift start", logger))
+            return abort("lift failed");
 
-        send_feedback(gh, 0.54f, "Moving to transit waypoint");
-        if (!moveToJoints(move_group, MOVEMENT_WAYPOINT, "movement_waypoint", logger))
-            return abort("Failed at transit waypoint");
+        if (!moveToJoints(move_group, MOVEMENT_WAYPOINT,
+            "transit", logger))
+            return abort("transit failed");
 
-        send_feedback(gh, 0.63f, "Moving above end pose");
-        if (!moveToPose(move_group, end_hover, "end_hover", logger))
-            return abort("Failed at end hover");
+        if (!moveToPose(move_group, end_hover,
+            "end hover", logger))
+            return abort("end hover failed");
 
-        send_feedback(gh, 0.72f, "Descending to end pose");
-        if (!moveToPose(move_group, goal->end, "end_pose", logger))
-            return abort("Failed at end pose");
+        if (!moveCartesian(move_group, end,
+            "descend end", logger))
+            return abort("descend end failed");
 
-        send_feedback(gh, 0.81f, is_wall ? "Dropping wall" : "Dropping pawn");
-        publishGripperCommand(is_wall ? "drop_wall" : "drop_pawn");
+        sendGripper(is_wall ? "drop_wall" : "drop_pawn");
 
-        send_feedback(gh, 0.90f, "Lifting to end hover");
-        if (!moveToPose(move_group, end_hover, "end_hover_lift", logger))
-            return abort("Failed lifting to end hover");
+        if (!moveCartesian(move_group, end_hover,
+            "lift end", logger))
+            return abort("lift end failed");
 
-        send_feedback(gh, 1.00f, "Returning to perception waypoint");
-        if (!moveToJoints(move_group, PERCEPTION_WAYPOINT, "perception_waypoint_return", logger))
-            return abort("Failed returning to perception waypoint");
+        if (!moveToJoints(move_group, PERCEPTION_WAYPOINT,
+            "return", logger))
+            return abort("return failed");
 
         result->result = true;
         gh->succeed(result);
-        RCLCPP_INFO(logger, "BotMove completed successfully");
+
+        RCLCPP_INFO(logger, "Completed");
     };
 
-    auto action_server = rclcpp_action::create_server<BotMove>(
+    auto server = rclcpp_action::create_server<BotMove>(
         node,
         "/quoridor/bot_execute",
+        [](auto, auto){ return rclcpp_action::GoalResponse::ACCEPT_AND_EXECUTE; },
+        [](auto){ return rclcpp_action::CancelResponse::ACCEPT; },
+        [&](std::shared_ptr<GoalHandle> gh)
+        {
+            std::thread([&, gh]() { execute_cb(gh); }).detach();
+        });
 
-        [](const rclcpp_action::GoalUUID &,
-           std::shared_ptr<const BotMove::Goal>) {
-            return rclcpp_action::GoalResponse::ACCEPT_AND_EXECUTE;
-        },
-
-        [](std::shared_ptr<GoalHandle>) {
-            return rclcpp_action::CancelResponse::ACCEPT;
-        },
-
-        [&execute_cb](std::shared_ptr<GoalHandle> gh) {
-            std::thread([&execute_cb, gh]() {
-                execute_cb(gh);
-            }).detach();
-        }
-    );
-
-    RCLCPP_INFO(logger,
-        "Control node ready — action server on /quoridor/bot_execute");
-
+    RCLCPP_INFO(logger, "Control running");
     executor.spin();
     rclcpp::shutdown();
     return 0;
