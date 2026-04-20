@@ -15,9 +15,12 @@ find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_action REQUIRED)
 find_package(moveit_ros_planning_interface REQUIRED)
+find_package(moveit_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
+find_package(shape_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
+find_package(tf2 REQUIRED)
 find_package(OpenCV REQUIRED)
 find_package(realsense2 REQUIRED)
 find_package(cv_bridge REQUIRED)
@@ -31,6 +34,7 @@ add_executable(calibration_move src/calibration_move.cpp)
 add_executable(record_waypoints src/record_waypoints.cpp)
 add_executable(save_current_state src/save_current_state.cpp)
 add_executable(replay_and_save src/replay_and_save.cpp)
+add_executable(poses src/poses.cpp)
 
 target_compile_features(control PUBLIC c_std_99 cxx_std_17)
 target_compile_features(pose_test PUBLIC c_std_99 cxx_std_17)
@@ -46,8 +50,12 @@ ament_target_dependencies(
   rclcpp
   rclcpp_action
   moveit_ros_planning_interface
+  moveit_msgs
   std_msgs
+  sensor_msgs
   geometry_msgs
+  shape_msgs
+  tf2
   quoridor_interfaces
 )
 
@@ -55,7 +63,10 @@ ament_target_dependencies(
   pose_test
   rclcpp
   moveit_ros_planning_interface
+  moveit_msgs
   geometry_msgs
+  shape_msgs
+  tf2
 )
 
 ament_target_dependencies(
@@ -63,6 +74,7 @@ ament_target_dependencies(
   rclcpp
   moveit_ros_planning_interface
   geometry_msgs
+  sensor_msgs
 )
 
 ament_target_dependencies(
@@ -102,6 +114,8 @@ ament_target_dependencies(
   geometry_msgs
 )
 
+ament_target_dependencies(poses rclcpp rclcpp_action quoridor_interfaces)
+
 install(TARGETS
   control
   pose_test
@@ -111,6 +125,7 @@ install(TARGETS
   record_waypoints
   save_current_state
   replay_and_save
+  poses
   DESTINATION lib/${PROJECT_NAME}
 )
 
