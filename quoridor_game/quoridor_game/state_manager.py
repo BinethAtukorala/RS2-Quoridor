@@ -21,17 +21,13 @@ class StateManager(Node):
     def __init__(self):
         super().__init__('state_manager')
 
-        self.board = QuoridorBoard(walls=2)
-        self.board_state = {
-            "current":  None,
-            "past": None,
-            "lock": Lock()
-        }
-        self.wall_state = {
-            "current": None,
-            "past": None,
-            "lock": Lock()
-        }
+        self.board = QuoridorBoard()
+        # Perception state: single lock guards both grids + last-applied snapshots
+        self.perception_lock = Lock()
+        self.latest_pawn_grid = None
+        self.latest_wall_grid = None
+        self.last_applied_pawn_grid = None
+        self.last_applied_wall_grid = None
         self.input_mode = "manual"      # "manual" | "perception"
         self.bot_thinking = False
 
@@ -56,8 +52,7 @@ class StateManager(Node):
         self.sub_board_perception = self.create_subscription(
             Int32MultiArray, '/perception/board_state', self.on_board_update, 10)
         self.sub_wall_perception = self.create_subscription(
-            Int32MultiArray, '/perception/'
-        )
+            Int32MultiArray, '/perception/wall_state', self.on_wall_update, 10)
 
         self.get_logger().info('State Manager initialised -- waiting for "start" command')
         self.publish_board_state()
@@ -159,6 +154,7 @@ class StateManager(Node):
             self.board = QuoridorBoard()
             self.board.current_turn = "bot" if bot_first else "player"
             self.bot_thinking = False
+            self._reset_perception_snapshots()
             self.get_logger().info(
                 f'New game started -- {"bot" if bot_first else "player"} goes first')
             self.publish_board_state()
@@ -169,6 +165,8 @@ class StateManager(Node):
             self.input_mode = (
                 "perception" if self.input_mode == "manual" else "manual"
             )
+            if self.input_mode == "perception":
+                self._reset_perception_snapshots()
             self.get_logger().info(f'Input mode: {self.input_mode}')
             self.publish_board_state()
 
@@ -182,100 +180,169 @@ class StateManager(Node):
     #  Perception                       #
     # ------------------------------------------------------------------ #
 
+    def _reset_perception_snapshots(self):
+        with self.perception_lock:
+            self.latest_pawn_grid = None
+            self.latest_wall_grid = None
+            self.last_applied_pawn_grid = None
+            self.last_applied_wall_grid = None
+
     def on_board_update(self, msg: Int32MultiArray):
         if self.input_mode != "perception":
             return
+        n = self.board.n_
+        data = list(msg.data)
+        if len(data) != n * n:
+            self.get_logger().warn(
+                f'Pawn grid size mismatch: got {len(data)} entries, expected {n*n}')
+            return
+        grid = np.array(data, dtype=int).reshape(n, n)
+        self.get_logger().info(f"Got PAWN update:\n{grid}")
+        with self.perception_lock:
+            self.latest_pawn_grid = grid
+            self._try_apply_perception_diff_locked()
 
-        data = msg.data
-        board_size = self.board.n_
-        board_state = []
-        for i in range(board_size):
-            board_state.append(data[i*board_size : i*board_size+board_size])
+    def on_wall_update(self, msg: Int32MultiArray):
+        if self.input_mode != "perception":
+            return
+        wn = self.board.wall_n_
+        data = list(msg.data)
+        if len(data) != wn * wn:
+            self.get_logger().warn(
+                f'Wall grid size mismatch: got {len(data)} entries, expected {wn*wn}')
+            return
+        grid = np.flipud(np.array(data, dtype=int).reshape(wn, wn))
+        self.get_logger().info(f"Got WALL update:\n{grid}")
+        with self.perception_lock:
+            self.latest_wall_grid = grid
+            self._try_apply_perception_diff_locked()
 
-        # Flip vertically
-        board_state = np.flipud(board_state)
+    def _try_apply_perception_diff_locked(self):
+        """Single entry point for both perception topics. Caller must hold
+        perception_lock. Looks for exactly one pawn move OR one wall placement
+        vs. the last-applied snapshot and applies it."""
+        if self.latest_pawn_grid is None or self.latest_wall_grid is None:
+            return  # wait until we've seen at least one of each
 
-        with self.board_state["lock"]:
+        # First time both are available: baseline and return.
+        if self.last_applied_pawn_grid is None or self.last_applied_wall_grid is None:
+            self.last_applied_pawn_grid = self.latest_pawn_grid.copy()
+            self.last_applied_wall_grid = self.latest_wall_grid.copy()
+            return
 
-            # First update: store as past and return
-            if self.board_state["past"] is None:
-                self.board_state["past"] = board_state
-                return
+        pawn_changed = not np.array_equal(
+            self.latest_pawn_grid, self.last_applied_pawn_grid)
+        wall_changed = not np.array_equal(
+            self.latest_wall_grid, self.last_applied_wall_grid)
 
-            self.board_state["past"] = self.board_state["current"]
-            self.board_state["current"] = board_state
+        if not pawn_changed and not wall_changed:
+            return
 
-            # No previous current to compare against yet
-            if self.board_state["past"] is None:
-                return
+        if pawn_changed and wall_changed:
+            self.get_logger().warn(
+                'Both pawn and wall grids changed simultaneously -- ignoring until stable')
+            return
 
-            if np.array_equal(self.board_state["past"], self.board_state["current"]):
-                return
+        move, description = (self._diff_pawn_move() if pawn_changed
+                             else self._diff_wall_move())
+        if move is None:
+            return  # diff handler already logged why
 
-            self.get_logger().info("Board state changed -- detecting pawn move")
+        who = self.board.current_turn
+        if not self.board.apply_move(move):
+            self.get_logger().warn(
+                f'Perceived {who} move ({description}) is illegal -- ignoring')
+            return
 
-            # Find cells that changed: disappeared (1->0) and appeared (0->1)
-            past = self.board_state["past"]
-            current = self.board_state["current"]
-            disappeared = []  # positions where a pawn was removed
-            appeared = []     # positions where a pawn appeared
+        # Commit snapshot only after a successful apply.
+        self.last_applied_pawn_grid = self.latest_pawn_grid.copy()
+        self.last_applied_wall_grid = self.latest_wall_grid.copy()
 
-            for r in range(board_size):
-                for c in range(board_size):
-                    if past[r][c] == 1 and current[r][c] == 0:
-                        disappeared.append((r, c))
-                    elif past[r][c] == 0 and current[r][c] == 1:
-                        appeared.append((r, c))
+        self.get_logger().info(f'Perception: {who} {description}')
+        self.publish_board_state()
 
-            if len(disappeared) != 1 or len(appeared) != 1:
-                self.get_logger().warn(
-                    f'Expected exactly one pawn move, got {len(disappeared)} disappeared '
-                    f'and {len(appeared)} appeared -- ignoring')
-                return
+        if self.board.game_status != "in_progress":
+            self.get_logger().info(f'Game over -- {self.board.game_status}')
+            return
 
-            # Grid is row, col where row=0 is top. Convert to board coords (x=col, y=row).
-            from_row, from_col = disappeared[0]
-            to_row, to_col = appeared[0]
-            from_pos = Pawn(from_col, from_row)
-            to_pos = Pawn(to_col, to_row)
+        if who == "player":
+            self.request_bot_move()
 
-            # Determine which pawn moved by matching the source position
-            if from_pos == self.board.player_pos_:
-                who = "player"
-            elif from_pos == self.board.bot_pos_:
-                who = "bot"
-            else:
-                self.get_logger().warn(
-                    f'Moved pawn at ({from_pos.x},{from_pos.y}) does not match '
-                    f'player ({self.board.player_pos_.x},{self.board.player_pos_.y}) '
-                    f'or bot ({self.board.bot_pos_.x},{self.board.bot_pos_.y}) -- ignoring')
-                return
+    def _diff_pawn_move(self):
+        past = self.last_applied_pawn_grid
+        current = self.latest_pawn_grid
+        disappeared, appeared = [], []
+        for r in range(past.shape[0]):
+            for c in range(past.shape[1]):
+                p, n = int(past[r][c]), int(current[r][c])
+                if p == 1 and n == 0:
+                    disappeared.append((r, c))
+                elif p == 0 and n == 1:
+                    appeared.append((r, c))
+        if len(disappeared) != 1 or len(appeared) != 1:
+            self.get_logger().warn(
+                f'Expected exactly one pawn move, got {len(disappeared)} disappeared '
+                f'and {len(appeared)} appeared -- ignoring')
+            return None, None
 
-            if who != self.board.current_turn:
-                self.get_logger().warn(
-                    f'Detected {who} pawn move but it is {self.board.current_turn}\'s turn -- ignoring')
-                return
+        from_row, from_col = disappeared[0]
+        to_row, to_col = appeared[0]
+        from_pos = Pawn(from_col, from_row)
+        to_pos = Pawn(to_col, to_row)
 
-            move = Move(move_type=MoveType.PAWN, target=to_pos)
+        if from_pos == self.board.player_pos_:
+            who = "player"
+        elif from_pos == self.board.bot_pos_:
+            who = "bot"
+        else:
+            self.get_logger().warn(
+                f'Moved pawn at ({from_pos.x},{from_pos.y}) does not match '
+                f'player ({self.board.player_pos_.x},{self.board.player_pos_.y}) '
+                f'or bot ({self.board.bot_pos_.x},{self.board.bot_pos_.y}) -- ignoring')
+            return None, None
 
-            if not self.board.apply_move(move):
-                self.get_logger().warn(
-                    f'Perceived {who} move to ({to_pos.x},{to_pos.y}) is illegal -- ignoring')
-                return
+        if who != self.board.current_turn:
+            self.get_logger().warn(
+                f'Detected {who} pawn move but it is {self.board.current_turn}\'s turn -- ignoring')
+            return None, None
 
-            self.get_logger().info(
-                f'Perception: {who} pawn moved from ({from_pos.x},{from_pos.y}) '
-                f'to ({to_pos.x},{to_pos.y})')
-            self.publish_board_state()
+        move = Move(move_type=MoveType.PAWN, target=to_pos)
+        desc = f'pawn moved from ({from_pos.x},{from_pos.y}) to ({to_pos.x},{to_pos.y})'
+        return move, desc
 
-            if self.board.game_status != "in_progress":
-                self.get_logger().info(f'Game over -- {self.board.game_status}')
-                return
+    def _diff_wall_move(self):
+        past = self.last_applied_wall_grid
+        current = self.latest_wall_grid
+        appeared, removed = [], []
+        for r in range(past.shape[0]):
+            for c in range(past.shape[1]):
+                p, n = int(past[r][c]), int(current[r][c])
+                if p == 0 and n != 0:
+                    appeared.append((c, r, n))
+                elif p != 0 and n == 0:
+                    removed.append((c, r, p))
+        if removed:
+            self.get_logger().warn(
+                f'Wall(s) disappeared from perception: {removed} -- ignoring')
+            return None, None
+        if len(appeared) != 1:
+            self.get_logger().warn(
+                f'Expected exactly one new wall, got {len(appeared)} -- ignoring')
+            return None, None
 
-            # If the player just moved, trigger bot's turn
-            if who == "player":
-                self.request_bot_move()
+        wx, wy, val = appeared[0]
+        if val == 1:
+            orient = Orientation.VER
+        elif val == 2:
+            orient = Orientation.HOR
+        else:
+            self.get_logger().warn(f'Unknown wall value {val} -- ignoring')
+            return None, None
 
+        move = Move(move_type=MoveType.WALL,
+                    wall=Wall(pos=(wx, wy), orientation=orient))
+        desc = f'placed {orient.name} wall at ({wx},{wy})'
+        return move, desc
 
 
 def main(args=None):
