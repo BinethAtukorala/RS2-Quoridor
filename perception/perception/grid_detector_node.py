@@ -769,7 +769,8 @@ class GridDetectorNode(Node):
             cv2.line(img, (0, x), (500, x), (0, 255, 0), 1)
         return img
 
-    def detect_black_objects(self, img, pawns_3d_grid, H_inv=None, depth_frame=None):
+    # def detect_black_objects(self, img, pawns_3d_grid, H_inv=None, depth_frame=None):
+    def detect_black_objects(self, img, pawns_list, H_inv=None, depth_frame=None):
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         _, mask = cv2.threshold(gray, 70, 255, cv2.THRESH_BINARY_INV)
         cell = 100
@@ -795,7 +796,14 @@ class GridDetectorNode(Node):
 
                         if (r, c) in self.grid_lookup:
                             point_3d = self.grid_lookup[(r, c)]
-                            pawns_3d_grid[r][c] = point_3d
+                            # pawns_3d_grid[r][c] = point_3d
+                            pawns_list.append([
+                                float(r),
+                                float(c),
+                                point_3d[0],
+                                point_3d[1],
+                                point_3d[2]
+                            ])
                             self.get_logger().info(
                                 f"Pawn at [{r},{c}] 3D: x={point_3d[0]:.3f}, y={point_3d[1]:.3f}, z={point_3d[2]:.3f}"
                             )
@@ -811,7 +819,8 @@ class GridDetectorNode(Node):
         img = self.latest_color.copy()
         depth_frame = self.latest_depth.copy()
 
-        pawns_3d_grid = [[[0.0, 0.0, 0.0] for _ in range(5)] for _ in range(5)]
+        # pawns_3d_grid = [[[0.0, 0.0, 0.0] for _ in range(5)] for _ in range(5)]
+        pawns_list = []  # each entry: [row, col, x, y, z]
 
         # Bug fix: was `color` (undefined), now correctly `img`
         corners = self.detect_board_corners(img)
@@ -828,7 +837,8 @@ class GridDetectorNode(Node):
         topdown = self.warp_board(img, H)
 
         self.board.clear()
-        self.detect_black_objects(topdown, pawns_3d_grid, H_inv, depth_frame)
+        # self.detect_black_objects(topdown, pawns_3d_grid, H_inv, depth_frame)
+        self.detect_black_objects(topdown, pawns_list, H_inv, depth_frame)
         topdown = self.draw_grid(topdown)
 
         board_str = "\n".join(" ".join(str(c) for c in row) for row in self.board.board)
@@ -845,10 +855,14 @@ class GridDetectorNode(Node):
         msg_board.data = self.board.board.flatten().tolist()
         self.pub_board.publish(msg_board)
 
+        # flat_data = []
+        # for row in pawns_3d_grid:
+        #     for cell in row:
+        #         flat_data.extend(cell)
+
         flat_data = []
-        for row in pawns_3d_grid:
-            for cell in row:
-                flat_data.extend(cell)
+        for pawn in pawns_list:
+            flat_data.extend(pawn)
 
         msg_pawns = Float32MultiArray()
         msg_pawns.data = flat_data

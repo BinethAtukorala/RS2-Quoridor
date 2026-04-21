@@ -102,6 +102,7 @@ import numpy as np
 from cv_bridge import CvBridge
 import json
 import os
+from quoridor_interfaces.srv import GetCoords
 
 class CameraNode(Node):
     def __init__(self):
@@ -160,8 +161,111 @@ class CameraNode(Node):
         else:
             self.get_logger().info("Intrinsics file already exists, skipping save.")
 
+        self.pawn_file = os.path.expanduser("~/rs2_ws/src/perception/pawn_coords.txt")
+        self.wall_file = os.path.expanduser("~/rs2_ws/src/perception/wall_coords.txt")
+
+        self.wall_service = self.create_service(
+            GetCoords,
+            '/get_walls',
+            self.handle_get_wall_coords
+        )
+
+        self.pawn_service = self.create_service(
+            GetCoords,
+            '/get_pawns',
+            self.handle_get_pawn_coords
+        )
+
         self.get_logger().info("Camera Node Started")
         self.timer = self.create_timer(0.033, self.timer_callback)
+
+    # def handle_get_wall_coords(self, request, response):
+    #     self.get_logger().info("Wall coords service called")
+
+    #     if not os.path.exists(self.wall_file):
+    #         return response
+
+    #     data_array = []
+
+    #     try:
+    #         with open(self.wall_file, 'r') as f:
+    #             for line in f:
+    #                 parts = line.strip().split(',')
+
+    #                 if len(parts) != 5:
+    #                     continue
+
+    #                 r = float(parts[0])
+    #                 c = float(parts[1])
+    #                 x = float(parts[2])
+    #                 y = float(parts[3])
+    #                 z = float(parts[4])
+
+    #                 data_array.extend([r, c, x, y, z])
+
+    #         response.data = data_array
+
+    #     except Exception as e:
+    #         self.get_logger().error(f"Error reading wall file: {e}")
+
+    #     return response 
+
+    # def handle_get_pawn_coords(self, request, response):
+    #     self.get_logger().info("Pawn coords service called")
+
+    #     if not os.path.exists(self.pawn_file):
+    #         return response
+
+    #     data_array = []
+
+    #     try:
+    #         with open(self.pawn_file, 'r') as f:
+    #             for line in f:
+    #                 parts = line.strip().split(',')
+
+    #                 if len(parts) != 5:
+    #                     continue
+
+    #                 r = float(parts[0])
+    #                 c = float(parts[1])
+    #                 x = float(parts[2])
+    #                 y = float(parts[3])
+    #                 z = float(parts[4])
+
+    #                 data_array.extend([r, c, x, y, z])
+
+    #         response.data = data_array
+
+    #     except Exception as e:
+    #         self.get_logger().error(f"Error reading pawn file: {e}")
+
+    #     return response
+
+    def handle_get_wall_coords(self, request, response):
+        data_array = []
+
+        if os.path.exists(self.wall_file):
+            with open(self.wall_file, 'r') as f:
+                for line in f:
+                    parts = line.strip().split(',')
+                    if len(parts) == 5:
+                        data_array.extend([float(p) for p in parts])
+
+        response.data = data_array
+        return response
+
+    def handle_get_pawn_coords(self, request, response):
+        data_array = []
+
+        if os.path.exists(self.pawn_file):
+            with open(self.pawn_file, 'r') as f:
+                for line in f:
+                    parts = line.strip().split(',')
+                    if len(parts) == 5:
+                        data_array.extend([float(p) for p in parts])
+
+        response.data = data_array
+        return response
 
     def timer_callback(self):
         try:

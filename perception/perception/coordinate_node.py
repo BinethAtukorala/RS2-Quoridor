@@ -737,8 +737,8 @@ class CoordinateNode(Node):
         # self.circle_file = "/home/bihan/ros2_ws/src/perception/pawn_coords.txt"
         # self.grid_file   = "/home/bihan/ros2_ws/src/perception/wall_coords.txt"
 
-        self.circle_file = os.path.expanduser("/rs2_ws/src/perception/pawn_coords.txt")
-        self.grid_file = os.path.expanduser("/rs2_ws/src/perception/wall_coords.txt")
+        self.circle_file = os.path.expanduser("~/rs2_ws/src/perception/pawn_coords.txt")
+        self.grid_file = os.path.expanduser("~/rs2_ws/src/perception/wall_coords.txt")
 
         # self.circle_file = "~/rs2_ws/src/perception/pawn_coords.txt"
         # self.grid_file   = "~/rs2_ws/src/perception/wall_coords.txt"
