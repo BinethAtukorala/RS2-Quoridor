@@ -21,6 +21,7 @@ setup(
             'grid_detector_node = perception.grid_detector_node:main',
             'circle_detector_node = perception.circle_detector_node:main',
             'coordinate_node = perception.coordinate_node:main',
+            'camera_node = perception.camera_node:main',
         ],
     },
 )

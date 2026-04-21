@@ -124,7 +124,7 @@ class CameraNode(Node):
 
         if self.is_bag:
             self.get_logger().info(f"Using BAG file: {bag_file}")
-            rs.config.enable_device_from_file(self.config, bag_file, repeat_playback=False)
+            rs.config.enable_device_from_file(self.config, bag_file, repeat_playback=True)
         else:
             self.get_logger().info("Using LIVE camera")
             self.config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 15)
@@ -139,7 +139,7 @@ class CameraNode(Node):
 
         # Path to save intrinsics
         # self.intrinsics_file = os.path.expanduser("~/ros2_ws/src/perception/camera_intrinsics.json")
-        self.intrinsics_file = os.path.expanduser("/rs2_ws/src/perception/camera_intrinsics.json")
+        self.intrinsics_file = os.path.expanduser("~/rs2_ws/src/perception/camera_intrinsics.json")
 
         # Save intrinsics only if file does not exist
         if not os.path.exists(self.intrinsics_file):

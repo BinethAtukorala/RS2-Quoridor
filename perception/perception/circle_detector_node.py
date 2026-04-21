@@ -839,7 +839,7 @@ class CircleDetectorNode(Node):
 
         # 2. File Reading Setup
         # self.circle_file = os.path.expanduser("~/ros2_ws/src/perception/circle_coords.txt")
-        self.circle_file = os.path.expanduser("/rs2_ws/src/perception/wall_coords.txt")
+        self.circle_file = os.path.expanduser("~/rs2_ws/src/perception/wall_coords.txt")
         self.saved_coords = {} # Stores (gx, gy) -> (x, y, z)
         self.load_circle_coords()
 
@@ -856,7 +856,7 @@ class CircleDetectorNode(Node):
 
         # COMMENT THS OUT FOR NORMAL USE
         # ---------------------------------------------------------------------------
-        self.intrinsics_file = os.path.expanduser("/rs2_ws/src/perception/camera_intrinsics.json")
+        self.intrinsics_file = os.path.expanduser("~/rs2_ws/src/perception/camera_intrinsics.json")
 
         with open(self.intrinsics_file, "r") as f:
             intr = json.load(f)
@@ -1156,16 +1156,51 @@ class CircleDetectorNode(Node):
         # self.pub_inside.publish(msg_inside)
 
         # ================= INSIDE WALLS =================
+        # inside_data = []
+
+        # for r in range(self.rows):
+        #     for c in range(self.cols):
+        #         if self.wall_circles[r, c] != 0 and (c, r) in self.saved_coords:
+        #             x, y, z = self.saved_coords[(c, r)]
+        #         else:
+        #             x, y, z = 0.0, 0.0, 0.0
+
+        #         inside_data.extend([float(x), float(y), float(z)])
+
+        # msg_inside = Float32MultiArray()
+        # msg_inside.data = inside_data
+        # self.pub_inside.publish(msg_inside)
+
+        # ================= INSIDE WALLS (ONLY DETECTED) =================
         inside_data = []
 
         for r in range(self.rows):
             for c in range(self.cols):
-                if self.wall_circles[r, c] != 0 and (c, r) in self.saved_coords:
-                    x, y, z = self.saved_coords[(c, r)]
-                else:
-                    x, y, z = 0.0, 0.0, 0.0
 
-                inside_data.extend([float(x), float(y), float(z)])
+                # Only consider detected walls
+                if self.wall_circles[r, c] != 0:
+
+                    # Check if we have calibrated coordinates
+                    if (c, r) in self.saved_coords:
+                        x, y, z = self.saved_coords[(c, r)]
+
+                        # Append: row, col, x, y, z
+                        inside_data.extend([
+                            float(r),   # row index
+                            float(c),   # column index
+                            float(x),
+                            float(y),
+                            float(z)
+                        ])
+
+                        self.get_logger().info(
+                            f"Publishing INSIDE wall -> grid[{r},{c}] "
+                            f"3D(cm): x={x*100:.2f}, y={y*100:.2f}, z={z*100:.2f}"
+                        )
+                    else:
+                        self.get_logger().warn(
+                            f"Wall detected at [{r},{c}] but NO saved coordinate found"
+                        )
 
         msg_inside = Float32MultiArray()
         msg_inside.data = inside_data
