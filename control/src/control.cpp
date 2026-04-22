@@ -1,12 +1,11 @@
-BEST ONE WORKING FINALISED - ONLY OTHER IMPROVEMENT IS TO MAKE SURE MOVEMENT WAYPOINT IS SAME AS START AND END POSE:
-
-
+UPDATED CONTROL.CPP-
 #include <memory>
 #include <thread>
 #include <vector>
 #include <chrono>
 #include <cmath>
 #include <string>
+#include <atomic>
 
 #include <rclcpp/rclcpp.hpp>
 #include <rclcpp_action/rclcpp_action.hpp>
@@ -339,8 +338,13 @@ int main(int argc, char * argv[])
     // ================================================================ //
     //  GRIPPER
     // ================================================================ //
-    auto gripper_pub = node->create_publisher<std_msgs::msg::String>("/gripper/command", 10);
-    bool gripper_done = false;
+    // auto gripper_pub = node->create_publisher<std_msgs::msg::String>("/gripper/command", 10);
+    auto gripper_pub = node->create_publisher<std_msgs::msg::String>(
+        "/gripper/command",
+        rclcpp::QoS(10).transient_local()
+    );
+    // bool gripper_done = false;
+    std::atomic<bool> gripper_done{false};
 
     auto gripper_sub = node->create_subscription<std_msgs::msg::String>(
         "/gripper/status", 10,
