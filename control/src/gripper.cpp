@@ -35,8 +35,13 @@ public:
             "/joint_states", 10,
             std::bind(&GripperNode::jointCallback, this, std::placeholders::_1));
 
-        cmd_sub_ = this->create_subscription<std_msgs::msg::String>(
-            "/gripper/command", 10,
+        // cmd_sub_ = this->create_subscription<std_msgs::msg::String>(
+        //     "/gripper/command", 10,
+        //     std::bind(&GripperNode::commandCallback, this, std::placeholders::_1));
+
+         cmd_sub_ = this->create_subscription<std_msgs::msg::String>(
+            "/gripper/command",
+            rclcpp::QoS(10).transient_local(),
             std::bind(&GripperNode::commandCallback, this, std::placeholders::_1));
 
         timer_ = this->create_wall_timer(
