@@ -11,7 +11,7 @@
 
 #include "quoridor_interfaces/action/bot_move.hpp"
 
-static const std::string POSES_FILE = "/home/bihan/rs2_ws_binada/poses.txt";
+static const std::string POSES_FILE = "/home/bihan/rs2_ws/src/perception/poses.txt";
 static const std::string PIECE_TYPE = "p";
 
 static const double ORI_X = 1.0, ORI_Y = 0.0, ORI_Z = -0.0000032, ORI_W = 0.0000159;

@@ -42,7 +42,7 @@ int main(int argc, char * argv[])
 
     RCLCPP_INFO(logger, "CWD: %s", std::filesystem::current_path().c_str());
 
-    std::ofstream file("box_poses.txt", std::ios::app);
+    std::ofstream file("perceptionnew.txt", std::ios::app);
     if (!file.is_open()) {
         RCLCPP_ERROR(logger, "Failed to open file!");
         return 1;
