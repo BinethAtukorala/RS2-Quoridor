@@ -2,9 +2,13 @@ import json
 
 import rclpy
 from rclpy.node import Node
+from rclpy.action import ActionClient
 from std_msgs.msg import String, Int32MultiArray
+from geometry_msgs.msg import Pose
 from threading import Lock
 import numpy as np
+
+from quoridor_interfaces.action import BotMove as BotMoveAction
 
 from quoridor_game.quoridor_utils import (
     Move,
@@ -28,6 +32,11 @@ class StateManager(Node):
         self.latest_wall_grid = None
         self.last_applied_pawn_grid = None
         self.last_applied_wall_grid = None
+        # Snapshot of last_applied_* from before the most recent programmatic
+        # move. Used to silently absorb perception frames that still show the
+        # pre-move state while the robot is physically executing.
+        self.prev_applied_pawn_grid = None
+        self.prev_applied_wall_grid = None
         self.input_mode = "manual"      # "manual" | "perception"
         self.bot_thinking = False
 
@@ -36,9 +45,11 @@ class StateManager(Node):
             String, '/quoridor/board_state', 10)
         self.pub_compute_request = self.create_publisher(
             String, '/quoridor/compute_move_request', 10)
-        # Placeholder: move execution subsystem subscribes here
-        self.pub_bot_execute = self.create_publisher(
-            String, '/quoridor/bot_execute', 10)
+        # Move execution subsystem — action client. The action server is
+        # expected to advertise BotMove on /quoridor/bot_execute.
+        self.bot_execute_client = ActionClient(
+            self, BotMoveAction, '/quoridor/bot_execute')
+        self.bot_executing = False
 
         # --- subscribers ---
         self.sub_player_move = self.create_subscription(
@@ -65,6 +76,7 @@ class StateManager(Node):
         state = self.board.to_dict()
         state["input_mode"] = self.input_mode
         state["bot_thinking"] = self.bot_thinking
+        state["bot_executing"] = self.bot_executing
         msg = String()
         msg.data = json.dumps(state)
         self.pub_board_state.publish(msg)
@@ -76,6 +88,9 @@ class StateManager(Node):
     def on_player_move(self, msg: String):
         if self.board.game_status != "in_progress":
             self.get_logger().warn('Game is not in progress -- move ignored')
+            return
+        if self.bot_executing:
+            self.get_logger().warn('Bot is still executing -- player move ignored')
             return
         if self.board.current_turn != "player":
             self.get_logger().warn('Not the player\'s turn -- move ignored')
@@ -91,6 +106,7 @@ class StateManager(Node):
             self.get_logger().warn('Illegal player move rejected')
             return
 
+        self._sync_snapshots_to_board()
         self.get_logger().info(f'Player move applied: {msg.data}')
         self.publish_board_state()
 
@@ -120,22 +136,86 @@ class StateManager(Node):
             self.get_logger().error(f'Bad bot move payload: {e}')
             return
 
+        # Capture pre-move bot position for the action goal's start pose.
+        prev_bot_pos = Pawn(self.board.bot_pos_.x, self.board.bot_pos_.y)
+
         if not self.board.apply_move(move):
             self.get_logger().error('Move Decision returned an illegal move!')
             self.publish_board_state()
             return
 
+        self._sync_snapshots_to_board()
         self.get_logger().info(f'Bot move applied: {msg.data}')
-
-        # Forward to move execution subsystem (placeholder)
-        exec_msg = String()
-        exec_msg.data = json.dumps(move.to_dict())
-        self.pub_bot_execute.publish(exec_msg)
 
         self.publish_board_state()
 
+        self._send_bot_execute_goal(move, prev_bot_pos)
+
         if self.board.game_status != "in_progress":
             self.get_logger().info(f'Game over -- {self.board.game_status}')
+
+    # ------------------------------------------------------------------ #
+    #  Bot execute action                                                 #
+    # ------------------------------------------------------------------ #
+
+    @staticmethod
+    def _grid_pose(x: int, y: int) -> Pose:
+        p = Pose()
+        p.position.x = float(x)
+        p.position.y = float(y)
+        p.position.z = 0.0
+        p.orientation.w = 1.0
+        return p
+
+    def _send_bot_execute_goal(self, move: Move, prev_bot_pos: Pawn):
+        goal = BotMoveAction.Goal()
+        if move.move_type == MoveType.PAWN:
+            goal.piece_type = 'p'
+            goal.start = self._grid_pose(prev_bot_pos.x, prev_bot_pos.y)
+            goal.end = self._grid_pose(move.target.x, move.target.y)
+        else:
+            goal.piece_type = 'v' if move.wall.orientation == Orientation.VER else 'h'
+            wx, wy = move.wall.pos
+            # Walls occupy a single slot; send the same pose for start and end.
+            goal.start = self._grid_pose(wx, wy)
+            goal.end = self._grid_pose(wx, wy)
+
+        if not self.bot_execute_client.wait_for_server(timeout_sec=2.0):
+            self.get_logger().error(
+                '/quoridor/bot_execute action server not available -- skipping execution')
+            return
+
+        self.bot_executing = True
+        self.get_logger().info(
+            f'Sending bot execute goal: piece={goal.piece_type} '
+            f'start=({goal.start.position.x},{goal.start.position.y}) '
+            f'end=({goal.end.position.x},{goal.end.position.y})')
+        send_future = self.bot_execute_client.send_goal_async(
+            goal, feedback_callback=self._on_bot_execute_feedback)
+        send_future.add_done_callback(self._on_bot_execute_goal_response)
+
+    def _on_bot_execute_feedback(self, feedback_msg):
+        self.get_logger().debug(
+            f'Bot execute progress: {feedback_msg.feedback.progress:.2f}')
+
+    def _on_bot_execute_goal_response(self, future):
+        goal_handle = future.result()
+        if not goal_handle.accepted:
+            self.get_logger().error('Bot execute goal rejected by server')
+            self.bot_executing = False
+            return
+        self.get_logger().info('Bot execute goal accepted, awaiting result')
+        result_future = goal_handle.get_result_async()
+        result_future.add_done_callback(self._on_bot_execute_result)
+
+    def _on_bot_execute_result(self, future):
+        self.bot_executing = False
+        result = future.result().result
+        if result.result:
+            self.get_logger().info('Bot execute completed successfully')
+        else:
+            self.get_logger().error('Bot execute reported failure')
+        self.publish_board_state()
 
     # ------------------------------------------------------------------ #
     #  Game commands                                                      #
@@ -186,6 +266,39 @@ class StateManager(Node):
             self.latest_wall_grid = None
             self.last_applied_pawn_grid = None
             self.last_applied_wall_grid = None
+            self.prev_applied_pawn_grid = None
+            self.prev_applied_wall_grid = None
+
+    def _synthesize_grids_from_board(self):
+        """Build pawn/wall grids that match what perception would publish for
+        the current board state (already in board-coord orientation)."""
+        n = self.board.n_
+        wn = self.board.wall_n_
+        pawn = np.zeros((n, n), dtype=int)
+        pawn[self.board.bot_pos_.y, self.board.bot_pos_.x] = 1
+        pawn[self.board.player_pos_.y, self.board.player_pos_.x] = 1
+        wall = np.zeros((wn, wn), dtype=int)
+        for w in self.board.walls:
+            wx, wy = w.pos
+            wall[wy, wx] = 1 if w.orientation == Orientation.VER else 2
+        return pawn, wall
+
+    def _sync_snapshots_to_board(self):
+        """After a programmatic apply (player UI / bot compute), advance the
+        last-applied snapshot to match the new board state so perception
+        catch-up frames don't re-trigger the same move."""
+        pawn, wall = self._synthesize_grids_from_board()
+        with self.perception_lock:
+            self.prev_applied_pawn_grid = (
+                self.last_applied_pawn_grid.copy()
+                if self.last_applied_pawn_grid is not None else None
+            )
+            self.prev_applied_wall_grid = (
+                self.last_applied_wall_grid.copy()
+                if self.last_applied_wall_grid is not None else None
+            )
+            self.last_applied_pawn_grid = pawn
+            self.last_applied_wall_grid = wall
 
     def on_board_update(self, msg: Int32MultiArray):
         if self.input_mode != "perception":
@@ -196,7 +309,7 @@ class StateManager(Node):
             self.get_logger().warn(
                 f'Pawn grid size mismatch: got {len(data)} entries, expected {n*n}')
             return
-        grid = np.array(data, dtype=int).reshape(n, n)
+        grid = np.flipud(np.array(data, dtype=int).reshape(n, n))
         self.get_logger().info(f"Got PAWN update:\n{grid}")
         with self.perception_lock:
             self.latest_pawn_grid = grid
@@ -221,6 +334,8 @@ class StateManager(Node):
         """Single entry point for both perception topics. Caller must hold
         perception_lock. Looks for exactly one pawn move OR one wall placement
         vs. the last-applied snapshot and applies it."""
+        if self.bot_executing:
+            return  # physical motion in progress; frames are unreliable
         if self.latest_pawn_grid is None or self.latest_wall_grid is None:
             return  # wait until we've seen at least one of each
 
@@ -236,6 +351,16 @@ class StateManager(Node):
             self.latest_wall_grid, self.last_applied_wall_grid)
 
         if not pawn_changed and not wall_changed:
+            return
+
+        # Perception-lag suppression: if the latest frame still matches the
+        # snapshot from before the most recent programmatic move, the camera
+        # hasn't caught up yet -- wait silently.
+        if (pawn_changed and self.prev_applied_pawn_grid is not None
+                and np.array_equal(self.latest_pawn_grid, self.prev_applied_pawn_grid)):
+            return
+        if (wall_changed and self.prev_applied_wall_grid is not None
+                and np.array_equal(self.latest_wall_grid, self.prev_applied_wall_grid)):
             return
 
         if pawn_changed and wall_changed:
@@ -254,9 +379,14 @@ class StateManager(Node):
                 f'Perceived {who} move ({description}) is illegal -- ignoring')
             return
 
-        # Commit snapshot only after a successful apply.
-        self.last_applied_pawn_grid = self.latest_pawn_grid.copy()
-        self.last_applied_wall_grid = self.latest_wall_grid.copy()
+        # Commit snapshot only after a successful apply. Synthesize from the
+        # new board state (not from latest_*) so prev/last bookkeeping stays
+        # consistent with the programmatic-move paths.
+        self.prev_applied_pawn_grid = self.last_applied_pawn_grid.copy()
+        self.prev_applied_wall_grid = self.last_applied_wall_grid.copy()
+        pawn, wall = self._synthesize_grids_from_board()
+        self.last_applied_pawn_grid = pawn
+        self.last_applied_wall_grid = wall
 
         self.get_logger().info(f'Perception: {who} {description}')
         self.publish_board_state()

@@ -19,7 +19,7 @@ class MoveDecision(Node):
     ``/quoridor/compute_move_response``.
     """
 
-    DEFAULT_DEPTH = 2
+    DEFAULT_DEPTH = 3
 
     def __init__(self):
         super().__init__('move_decision')
