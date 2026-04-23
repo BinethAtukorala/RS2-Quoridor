@@ -31,7 +31,7 @@ double deg2rad(double deg) { return deg * M_PI / 180.0; }
 // Perception / transit waypoint (radians)
 std::vector<double> PERCEPTION_WAYPOINT = {
     // -1.32227, -1.66748, -0.218161, -2.85343, 1.54598, 0.24451
-    -1.48368,-1.47431,-0.72157,-2.48629,1.60519,0.0981183
+    -1.48368,-1.47431,-0.72157,-2.45629,1.60519,0.0981183
 };
 
 std::vector<double> MOVEMENT_WAYPOINT = {
@@ -316,6 +316,7 @@ int main(int argc, char * argv[])
     move_group.setMaxAccelerationScalingFactor(0.3);
     move_group.setPlanningTime(10.0);
     move_group.setNumPlanningAttempts(5);
+    move_group.setGoalJointTolerance(1e-4);
 
     rclcpp::sleep_for(std::chrono::seconds(2));
 
@@ -360,6 +361,13 @@ int main(int argc, char * argv[])
         move_group.setPathConstraints(c);
         RCLCPP_INFO(logger, "Workspace joint constraints set");
     }
+
+    // ================================================================ //                                                                                                                      
+    //  STARTUP — move to perception waypoint                                                                                                                                                   
+    // ================================================================ //                                                                                                                      
+    if (!moveToJoints(move_group, PERCEPTION_WAYPOINT, "startup_perception", logger)) {                                                                                                         
+    RCLCPP_ERROR(logger, "Failed to move to perception waypoint at startup");                                                                                                        
+    }    
 
     // ================================================================ //
     //  GRIPPER
@@ -644,9 +652,9 @@ int main(int argc, char * argv[])
         // }
         send_feedback(gh, 1.00f, "Returning to perception waypoint");
         {
-            geometry_msgs::msg::Pose return_pose = fkPose(move_group, MOVEMENT_WAYPOINT);
-            return_pose.orientation = ori_place;
-            move_group.setJointValueTarget(MOVEMENT_WAYPOINT);
+            geometry_msgs::msg::Pose return_pose = fkPose(move_group, PERCEPTION_WAYPOINT);
+            return_pose.orientation = ORI_VWALL;
+            move_group.setJointValueTarget(PERCEPTION_WAYPOINT);
             if (!moveCartesianSequence(move_group,
                     { move_group.getCurrentPose().pose, return_pose },
                     "perception_return", logger))

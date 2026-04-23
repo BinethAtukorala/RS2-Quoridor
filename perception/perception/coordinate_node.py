@@ -37,8 +37,8 @@
 #         bag_file = self.get_parameter("bag_file").get_parameter_value().string_value
 #         self.camera = self.RealsenseCamera(bag_file if bag_file != "" else None)
 
-#         self.circle_file = os.path.expanduser("~/rs2_ws/src/perception/circle_coords.txt")
-#         self.grid_file = os.path.expanduser("~/rs2_ws/src/perception/grid_coords.txt")
+#         self.circle_file = os.path.expanduser("/rs2_ws/src/perception/circle_coords.txt")
+#         self.grid_file = os.path.expanduser("/rs2_ws/src/perception/grid_coords.txt")
 
 #         self.pub_grid_array = self.create_publisher(Float32MultiArray, '/quoridor/grid_3d_array', 10)
 #         self.pub_wall_array = self.create_publisher(Float32MultiArray, '/quoridor/wall_3d_array', 10)
@@ -241,8 +241,8 @@
 #         bag_file = self.get_parameter("bag_file").get_parameter_value().string_value
 #         self.camera = self.RealsenseCamera(bag_file if bag_file != "" else None)
 
-#         self.circle_file = os.path.expanduser("~/ros2_ws/src/perception/circle_coords.txt")
-#         self.grid_file = os.path.expanduser("~/ros2_ws/src/perception/grid_coords.txt")
+#         self.circle_file = os.path.expanduser("/ros2_ws/src/perception/circle_coords.txt")
+#         self.grid_file = os.path.expanduser("/ros2_ws/src/perception/grid_coords.txt")
 
 #         self.pub_grid_array = self.create_publisher(Float32MultiArray, '/quoridor/grid_3d_array', 10)
 #         self.pub_wall_array = self.create_publisher(Float32MultiArray, '/quoridor/wall_3d_array', 10)
@@ -737,11 +737,11 @@ class CoordinateNode(Node):
         # self.circle_file = "/home/bihan/ros2_ws/src/perception/pawn_coords.txt"
         # self.grid_file   = "/home/bihan/ros2_ws/src/perception/wall_coords.txt"
 
-        self.circle_file = os.path.expanduser("~/rs2_ws/src/perception/wall_coords.txt")
-        self.grid_file = os.path.expanduser("~/rs2_ws/src/perception/pawn_coords.txt")
+        self.circle_file = os.path.expanduser("/rs2_ws/src/perception/wall_coords.txt")
+        self.grid_file = os.path.expanduser("/rs2_ws/src/perception/pawn_coords.txt")
 
-        # self.circle_file = "~/rs2_ws/src/perception/pawn_coords.txt"
-        # self.grid_file   = "~/rs2_ws/src/perception/wall_coords.txt"
+        # self.circle_file = "/rs2_ws/src/perception/pawn_coords.txt"
+        # self.grid_file   = "/rs2_ws/src/perception/wall_coords.txt"
 
         self.pub_grid_array = self.create_publisher(Float32MultiArray, '/perception/grids_3d', 10)
         self.pub_wall_array = self.create_publisher(Float32MultiArray, '/perception/circles_3d', 10)
@@ -829,8 +829,8 @@ class CoordinateNode(Node):
 
     def load_calibration_and_generate(self):
         # file_path = "/home/bihan/rs2_ws_binada/calibration_poses.txt"
-        # file_path = os.path.expanduser("~/rs2_ws/calibration_poses.txt")
-        file_path = os.path.expanduser("~/rs2_ws/newposes.txt")
+        # file_path = os.path.expanduser("/rs2_ws/calibration_poses.txt")
+        file_path = os.path.expanduser("/rs2_ws/newposes.txt")
 
 
         data = []

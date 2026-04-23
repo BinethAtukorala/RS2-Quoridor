@@ -29,7 +29,7 @@
 #         self.profile = self.pipeline.start(config)
 
 #         # Path to save intrinsics
-#         self.intrinsics_file = os.path.expanduser("~/ros2_ws/src/perception/camera_intrinsics.json")
+#         self.intrinsics_file = os.path.expanduser("/ros2_ws/src/perception/camera_intrinsics.json")
 
 #         # Save intrinsics ONLY if file does not exist
 #         if not os.path.exists(self.intrinsics_file):
@@ -139,8 +139,8 @@ class CameraNode(Node):
             playback.set_real_time(False)
 
         # Path to save intrinsics
-        # self.intrinsics_file = os.path.expanduser("~/ros2_ws/src/perception/camera_intrinsics.json")
-        self.intrinsics_file = os.path.expanduser("~/rs2_ws/src/perception/camera_intrinsics.json")
+        # self.intrinsics_file = os.path.expanduser("/ros2_ws/src/perception/camera_intrinsics.json")
+        self.intrinsics_file = os.path.expanduser("/rs2_ws/src/perception/camera_intrinsics.json")
 
         # Save intrinsics only if file does not exist
         if not os.path.exists(self.intrinsics_file):
@@ -161,8 +161,8 @@ class CameraNode(Node):
         else:
             self.get_logger().info("Intrinsics file already exists, skipping save.")
 
-        self.pawn_file = os.path.expanduser("~/rs2_ws/src/perception/pawn_coords.txt")
-        self.wall_file = os.path.expanduser("~/rs2_ws/src/perception/wall_coords.txt")
+        self.pawn_file = os.path.expanduser("/rs2_ws/src/perception/pawn_coords.txt")
+        self.wall_file = os.path.expanduser("/rs2_ws/src/perception/wall_coords.txt")
 
         self.wall_service = self.create_service(
             GetCoords,

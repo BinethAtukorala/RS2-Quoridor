@@ -330,7 +330,7 @@
 #         # ---------------------------------------------------------------------------
 
 #         # 2. File Reading Setup
-#         self.circle_file = os.path.expanduser("~/ros2_ws/src/perception/circle_coords.txt")
+#         self.circle_file = os.path.expanduser("/ros2_ws/src/perception/circle_coords.txt")
 #         self.saved_coords = {} # Stores (gx, gy) -> (x, y, z)
 #         self.load_circle_coords()
 
@@ -347,7 +347,7 @@
 
 #         # COMMENT THS OUT FOR NORMAL USE
 #         # ---------------------------------------------------------------------------
-#         self.intrinsics_file = os.path.expanduser("~/ros2_ws/src/perception/camera_intrinsics.json")
+#         self.intrinsics_file = os.path.expanduser("/ros2_ws/src/perception/camera_intrinsics.json")
 
 #         with open(self.intrinsics_file, "r") as f:
 #             intr = json.load(f)
@@ -838,8 +838,8 @@ class CircleDetectorNode(Node):
         # ---------------------------------------------------------------------------
 
         # 2. File Reading Setup
-        # self.circle_file = os.path.expanduser("~/ros2_ws/src/perception/circle_coords.txt")
-        self.circle_file = os.path.expanduser("~/rs2_ws/src/perception/wall_coords.txt")
+        # self.circle_file = os.path.expanduser("/ros2_ws/src/perception/circle_coords.txt")
+        self.circle_file = os.path.expanduser("/rs2_ws/src/perception/wall_coords.txt")
         self.saved_coords = {} # Stores (gx, gy) -> (x, y, z)
         self.load_circle_coords()
 
@@ -856,7 +856,7 @@ class CircleDetectorNode(Node):
 
         # COMMENT THS OUT FOR NORMAL USE
         # ---------------------------------------------------------------------------
-        self.intrinsics_file = os.path.expanduser("~/rs2_ws/src/perception/camera_intrinsics.json")
+        self.intrinsics_file = os.path.expanduser("/rs2_ws/src/perception/camera_intrinsics.json")
 
         with open(self.intrinsics_file, "r") as f:
             intr = json.load(f)

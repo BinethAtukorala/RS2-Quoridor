@@ -38,7 +38,7 @@ class StateManager(Node):
         # pre-move state while the robot is physically executing.
         self.prev_applied_pawn_grid = None
         self.prev_applied_wall_grid = None
-        self.input_mode = "manual"      # "manual" | "perception"
+        self.input_mode = "perception"      # "manual" | "perception"
         self.bot_thinking = False
 
         # --- publishers ---
@@ -400,7 +400,7 @@ class StateManager(Node):
                 f'Pawn grid size mismatch: got {len(data)} entries, expected {n*n}')
             return
         grid = np.flipud(np.array(data, dtype=int).reshape(n, n))
-        self.get_logger().info(f"Got PAWN update:\n{grid}")
+        # self.get_logger().info(f"Got PAWN update:\n{grid}")
         with self.perception_lock:
             self.latest_pawn_grid = grid
             self._try_apply_perception_diff_locked()
@@ -415,7 +415,7 @@ class StateManager(Node):
                 f'Wall grid size mismatch: got {len(data)} entries, expected {wn*wn}')
             return
         grid = np.flipud(np.array(data, dtype=int).reshape(wn, wn))
-        self.get_logger().info(f"Got WALL update:\n{grid}")
+        # self.get_logger().info(f"Got WALL update:\n{grid}")
         with self.perception_lock:
             self.latest_wall_grid = grid
             self._try_apply_perception_diff_locked()
