@@ -30,7 +30,8 @@ double deg2rad(double deg) { return deg * M_PI / 180.0; }
 
 // Perception / transit waypoint (radians)
 std::vector<double> PERCEPTION_WAYPOINT = {
-    -1.32227, -1.66748, -0.218161, -2.85343, 1.54598, 0.24451
+    // -1.32227, -1.66748, -0.218161, -2.85343, 1.54598, 0.24451
+    -1.48368,-1.47431,-0.72157,-2.48629,1.60519,0.0981183
 };
 
 std::vector<double> MOVEMENT_WAYPOINT = {

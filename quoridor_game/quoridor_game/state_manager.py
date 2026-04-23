@@ -3,12 +3,13 @@ import json
 import rclpy
 from rclpy.node import Node
 from rclpy.action import ActionClient
-from std_msgs.msg import String, Int32MultiArray
+from std_msgs.msg import String, Int32MultiArray, Float32MultiArray
 from geometry_msgs.msg import Pose
 from threading import Lock
 import numpy as np
 
 from quoridor_interfaces.action import BotMove as BotMoveAction
+from quoridor_interfaces.srv import GetCoords
 
 from quoridor_game.quoridor_utils import (
     Move,
@@ -64,6 +65,23 @@ class StateManager(Node):
             Int32MultiArray, '/perception/board_state', self.on_board_update, 10)
         self.sub_wall_perception = self.create_subscription(
             Int32MultiArray, '/perception/wall_state', self.on_wall_update, 10)
+
+        # 3D coordinate caches keyed by perception (row, col). Populated from
+        # live topics (only detected pieces) and from the file-backed
+        # /get_pawns and /get_walls services (all calibrated grid cells) as a
+        # fallback for cells that have not been observed yet.
+        self.coords_lock = Lock()
+        self.pawn_coords_3d: dict[tuple[int, int], tuple[float, float, float]] = {}
+        self.wall_coords_3d: dict[tuple[int, int], tuple[float, float, float]] = {}
+
+        self.sub_pawns_3d = self.create_subscription(
+            Float32MultiArray, '/perception/pawns_3d', self.on_pawns_3d, 10)
+        self.sub_walls_3d = self.create_subscription(
+            Float32MultiArray, '/perception/walls_inside_3d', self.on_walls_3d, 10)
+
+        self.get_pawns_client = self.create_client(GetCoords, '/get_pawns')
+        self.get_walls_client = self.create_client(GetCoords, '/get_walls')
+        self._seed_coords_from_services()
 
         self.get_logger().info('State Manager initialised -- waiting for "start" command')
         self.publish_board_state()
@@ -159,26 +177,60 @@ class StateManager(Node):
     # ------------------------------------------------------------------ #
 
     @staticmethod
-    def _grid_pose(x: int, y: int) -> Pose:
+    def _pose_from_xyz(xyz: tuple[float, float, float]) -> Pose:
         p = Pose()
-        p.position.x = float(x)
-        p.position.y = float(y)
-        p.position.z = 0.0
+        p.position.x = float(xyz[0])
+        p.position.y = float(xyz[1])
+        p.position.z = float(xyz[2])
         p.orientation.w = 1.0
         return p
+
+    def _board_to_perception_rc(self, bx: int, by: int, grid_n: int) -> tuple[int, int]:
+        # state_manager flips incoming grids with np.flipud, so board y = row
+        # in the flipped grid => raw perception row = (grid_n - 1) - by.
+        return (grid_n - 1 - by, bx)
+
+    def _lookup_pawn_3d(self, bx: int, by: int):
+        rc = self._board_to_perception_rc(bx, by, self.board.n_)
+        with self.coords_lock:
+            return self.pawn_coords_3d.get(rc)
+
+    def _lookup_wall_3d(self, bx: int, by: int):
+        rc = self._board_to_perception_rc(bx, by, self.board.wall_n_)
+        with self.coords_lock:
+            return self.wall_coords_3d.get(rc)
 
     def _send_bot_execute_goal(self, move: Move, prev_bot_pos: Pawn):
         goal = BotMoveAction.Goal()
         if move.move_type == MoveType.PAWN:
+            start_xyz = self._lookup_pawn_3d(prev_bot_pos.x, prev_bot_pos.y)
+            end_xyz = self._lookup_pawn_3d(move.target.x, move.target.y)
+            if start_xyz is None:
+                self.get_logger().error(
+                    f'No 3D coord for pawn start ({prev_bot_pos.x},{prev_bot_pos.y}) '
+                    '-- cannot send bot_execute goal')
+                return
+            if end_xyz is None:
+                self.get_logger().error(
+                    f'No 3D coord for pawn end ({move.target.x},{move.target.y}) '
+                    '-- cannot send bot_execute goal')
+                return
             goal.piece_type = 'p'
-            goal.start = self._grid_pose(prev_bot_pos.x, prev_bot_pos.y)
-            goal.end = self._grid_pose(move.target.x, move.target.y)
+            goal.start = self._pose_from_xyz(start_xyz)
+            goal.end = self._pose_from_xyz(end_xyz)
         else:
-            goal.piece_type = 'v' if move.wall.orientation == Orientation.VER else 'h'
             wx, wy = move.wall.pos
-            # Walls occupy a single slot; send the same pose for start and end.
-            goal.start = self._grid_pose(wx, wy)
-            goal.end = self._grid_pose(wx, wy)
+            end_xyz = self._lookup_wall_3d(wx, wy)
+            if end_xyz is None:
+                self.get_logger().error(
+                    f'No 3D coord for wall slot ({wx},{wy}) '
+                    '-- cannot send bot_execute goal')
+                return
+            goal.piece_type = 'v' if move.wall.orientation == Orientation.VER else 'h'
+            # Control ignores goal.start for walls (uses a fixed pickup joint
+            # config), but we still send the target pose for both fields.
+            goal.start = self._pose_from_xyz(end_xyz)
+            goal.end = self._pose_from_xyz(end_xyz)
 
         if not self.bot_execute_client.wait_for_server(timeout_sec=2.0):
             self.get_logger().error(
@@ -257,8 +309,46 @@ class StateManager(Node):
             self.publish_board_state()
 
     # ------------------------------------------------------------------ #
-    #  Perception                       #
+    #  Perception                                                         #
     # ------------------------------------------------------------------ #
+
+    def _ingest_coords_flat(self, target: dict, data, label: str):
+        if len(data) % 5 != 0:
+            self.get_logger().warn(
+                f'{label} payload length {len(data)} is not a multiple of 5 -- ignoring')
+            return
+        with self.coords_lock:
+            for i in range(0, len(data), 5):
+                r = int(round(float(data[i])))
+                c = int(round(float(data[i + 1])))
+                x = float(data[i + 2])
+                y = float(data[i + 3])
+                z = float(data[i + 4])
+                target[(r, c)] = (x, y, z)
+
+    def on_pawns_3d(self, msg: Float32MultiArray):
+        self._ingest_coords_flat(self.pawn_coords_3d, msg.data, 'pawns_3d')
+
+    def on_walls_3d(self, msg: Float32MultiArray):
+        self._ingest_coords_flat(self.wall_coords_3d, msg.data, 'walls_inside_3d')
+
+    def _seed_coords_from_services(self, timeout_sec: float = 3.0):
+        for client, target, label in (
+            (self.get_pawns_client, self.pawn_coords_3d, '/get_pawns'),
+            (self.get_walls_client, self.wall_coords_3d, '/get_walls'),
+        ):
+            if not client.wait_for_service(timeout_sec=timeout_sec):
+                self.get_logger().warn(
+                    f'{label} service unavailable -- 3D coord fallback not seeded')
+                continue
+            future = client.call_async(GetCoords.Request())
+            rclpy.spin_until_future_complete(self, future, timeout_sec=timeout_sec)
+            if not future.done() or future.result() is None:
+                self.get_logger().warn(f'{label} service call timed out')
+                continue
+            self._ingest_coords_flat(target, future.result().data, label)
+            self.get_logger().info(
+                f'{label} seeded {len(target)} grid cells')
 
     def _reset_perception_snapshots(self):
         with self.perception_lock:
