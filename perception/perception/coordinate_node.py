@@ -737,8 +737,8 @@ class CoordinateNode(Node):
         # self.circle_file = "/home/bihan/ros2_ws/src/perception/pawn_coords.txt"
         # self.grid_file   = "/home/bihan/ros2_ws/src/perception/wall_coords.txt"
 
-        self.circle_file = os.path.expanduser("~/rs2_ws/src/perception/pawn_coords.txt")
-        self.grid_file = os.path.expanduser("~/rs2_ws/src/perception/wall_coords.txt")
+        self.circle_file = os.path.expanduser("~/rs2_ws/src/perception/wall_coords.txt")
+        self.grid_file = os.path.expanduser("~/rs2_ws/src/perception/pawn_coords.txt")
 
         # self.circle_file = "~/rs2_ws/src/perception/pawn_coords.txt"
         # self.grid_file   = "~/rs2_ws/src/perception/wall_coords.txt"
@@ -829,7 +829,9 @@ class CoordinateNode(Node):
 
     def load_calibration_and_generate(self):
         # file_path = "/home/bihan/rs2_ws_binada/calibration_poses.txt"
-        file_path = "~/rs2_ws/calibration_poses.txt"
+        # file_path = os.path.expanduser("~/rs2_ws/calibration_poses.txt")
+        file_path = os.path.expanduser("~/rs2_ws/newposes.txt")
+
 
         data = []
         with open(file_path, 'r') as f:
@@ -841,13 +843,59 @@ class CoordinateNode(Node):
 
         positions = data[:, 6:9]
 
-        # Corners
-        corners = positions[0:4]
+        # =============================
+        # Split calibration points
+        # =============================
+        pawn_corners = positions[0:4]
+        wall_corners = positions[4:8]
 
-        P0 = corners[0]  # top right
-        P1 = corners[1]  # top left
-        P2 = corners[2]  # bottom left
-        P3 = corners[3]  # bottom right
+        # =============================
+        # Pawn grid corners (5x5)
+        # =============================
+        P0_p = pawn_corners[0]  # top right
+        P1_p = pawn_corners[1]  # top left
+        P2_p = pawn_corners[2]  # bottom left
+        P3_p = pawn_corners[3]  # bottom right
+
+        # =============================
+        # Wall grid corners (4x4)
+        # =============================
+        P0_w = wall_corners[0]  # top right
+        P1_w = wall_corners[1]  # top left
+        P2_w = wall_corners[2]  # bottom left
+        P3_w = wall_corners[3]  # bottom right
+
+        positions = data[:, 6:9]
+
+        # # Corners
+        # # corners = positions[0:4]
+        # pawn_corners = positions[0:4]
+        # wall_corners = positions[4:8]
+
+        # P0 = corners[0]  # top right
+        # P1 = corners[1]  # top left
+        # P2 = corners[2]  # bottom left
+        # P3 = corners[3]  # bottom right
+
+        # def generate_grid(P0, P1, P2, P3, n):
+        #     grid = []
+
+        #     for i in range(n):
+        #         for j in range(n):
+
+        #             v = i / (n - 1)
+        #             u = j / (n - 1)
+
+        #             point = (
+        #                 (1 - u)*(1 - v)*P1 +
+        #                 u*(1 - v)*P0 +
+        #                 u*v*P3 +
+        #                 (1 - u)*v*P2
+        #             )
+
+        #             grid.append([i, j, point[0], point[1], point[2]])
+
+        #     return np.array(grid)
 
         def generate_grid(P0, P1, P2, P3, n):
             grid = []
@@ -869,8 +917,11 @@ class CoordinateNode(Node):
 
             return np.array(grid)
 
-        grid_5x5 = generate_grid(P0, P1, P2, P3, 5)
-        grid_4x4 = generate_grid(P0, P1, P2, P3, 4)
+        # grid_5x5 = generate_grid(P0, P1, P2, P3, 5)
+        # grid_4x4 = generate_grid(P0, P1, P2, P3, 4)
+
+        grid_5x5 = generate_grid(P0_p, P1_p, P2_p, P3_p, 5)  # pawns
+        grid_4x4 = generate_grid(P0_w, P1_w, P2_w, P3_w, 4)  # walls
 
         return grid_5x5, grid_4x4
         
