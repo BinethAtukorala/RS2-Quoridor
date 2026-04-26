@@ -27,6 +27,7 @@ setup(
             'state_manager = quoridor_game.state_manager:main',
             'move_decision = quoridor_game.move_decision:main',
             'user_interface = quoridor_game.user_interface:main',
+            'web_interface = quoridor_game.web_interface:main',
         ],
     },
 )

@@ -15,6 +15,8 @@ find_package(geometry_msgs REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
+  "msg/Wall.msg"
+  "msg/Board.msg"
   "action/BotMove.action"
   "srv/GetCoords.srv"
   DEPENDENCIES geometry_msgs

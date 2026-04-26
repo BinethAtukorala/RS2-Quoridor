@@ -12,8 +12,8 @@ class Orientation(Enum):
 
 
 class MoveType(Enum):
-    PAWN = 0
-    WALL = 1
+    WALL = 0
+    PAWN = 1
 
 
 @dataclass
@@ -83,7 +83,7 @@ class QuoridorBoard:
         return deepcopy(self)
 
     # ------------------------------------------------------------------ #
-    #  Wall-blocking queries                                              #
+    #  Wall-blocking queries                                             #
     # ------------------------------------------------------------------ #
 
     @staticmethod

@@ -14,8 +14,8 @@ from quoridor_game.quoridor_utils import (
 class MoveDecision(Node):
     """Quoridor bot engine — minimax with alpha-beta pruning.
 
-    Subscribes to ``/quoridor/compute_move_request`` (a JSON-serialised
-    ``BoardState``), computes the best move, and publishes the result on
+    Subscribes to ``/quoridor/compute_move_request``, 
+    computes the best move, and publishes the result on
     ``/quoridor/compute_move_response``.
     """
 
@@ -38,7 +38,7 @@ class MoveDecision(Node):
             f'Move Decision ready (search depth={self.max_depth})')
 
     # ------------------------------------------------------------------ #
-    #  ROS2 callback                                                      #
+    #  ROS2 callback                                                     #
     # ------------------------------------------------------------------ #
 
     def on_compute_request(self, msg: String):
