@@ -22,6 +22,8 @@ setup(
             'circle_detector_node = perception.circle_detector_node:main',
             'coordinate_node = perception.coordinate_node:main',
             'camera_node = perception.camera_node:main',
+            'ar_node = perception.ar_node:main',
+            'perception_node = perception.perception_node:main',
         ],
     },
 )

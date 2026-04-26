@@ -68,6 +68,9 @@ class GridDetectorNode(Node):
         self.ppx = intr["ppx"]
         self.ppy = intr["ppy"]
 
+        # In __init__
+        self.pub_corners = self.create_publisher(Float32MultiArray, '/perception/board_corners', 10)
+
         self.get_logger().info("Grid Detector Node started")
         self.timer = self.create_timer(0.1, self.timer_callback)
 
@@ -202,6 +205,13 @@ class GridDetectorNode(Node):
 
         for p in corners:
             cv2.circle(img, (int(p[0]), int(p[1])), 6, (0, 255, 0), -1)
+
+
+        # In timer_callback, after detecting corners:
+        if corners is not None:
+            msg_corners = Float32MultiArray()
+            msg_corners.data = corners.flatten().tolist()
+            self.pub_corners.publish(msg_corners)
 
         H = self.compute_homography(corners)
         H_inv = np.linalg.inv(H)

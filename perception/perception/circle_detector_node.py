@@ -323,6 +323,25 @@ class CircleDetectorNode(Node):
                             f"Wall detected at [{r},{c}] but NO saved coordinate found"
                         )
 
+        # # Inside CircleDetectorNode.timer_callback
+        # inside_data = []
+        # for r in range(self.rows):
+        #     for c in range(self.cols):
+        #         val = self.wall_circles[r, c]
+        #         if val != 0: # 1 for Vertical, 2 for Horizontal
+        #             if (c, r) in self.saved_coords:
+        #                 x, y, z = self.saved_coords[(c, r)]
+                        
+        #                 # We need to find the actual width/height from the blob logic
+        #                 # For simplicity, passing a standard wall size or 
+        #                 # storing the rw, rh from the detection loop.
+                        
+        #                 inside_data.extend([
+        #                     float(r), float(c), float(x), float(y), float(z),
+        #                     float(val), # Orientation (1 or 2)
+        #                     100.0, 20.0  # Default bbox size for projection if not saved
+        #                 ])
+
         msg_inside = Float32MultiArray()
         msg_inside.data = inside_data
         self.pub_inside.publish(msg_inside)
