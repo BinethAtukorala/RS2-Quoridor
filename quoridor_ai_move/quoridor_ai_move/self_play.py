@@ -99,10 +99,17 @@ def play_game(
         if board.game_status != "in_progress":
             break
 
-    # The last action of each recorded side never had a chance to be closed
-    # in the main loop -- attach the terminal reward to it here.
+    # # The last action of each recorded side never had a chance to be closed
+    # # in the main loop -- attach the terminal reward to it here.
+    # for side, (s, a) in pending.items():
+    #     r = _terminal_reward(board, side)
+
+    timed_out = board.game_status == "in_progress"  # hit max_plies
     for side, (s, a) in pending.items():
-        r = _terminal_reward(board, side)
+        if timed_out:
+            r = -0.1   # small penalty for not finishing — discourages stalling
+        else:
+            r = _terminal_reward(board, side)
         ns = encode_state(board, side)
         nm = legal_action_mask(board, side) if board.game_status == "in_progress" else \
              np.zeros(NUM_ACTIONS, dtype=np.float32)

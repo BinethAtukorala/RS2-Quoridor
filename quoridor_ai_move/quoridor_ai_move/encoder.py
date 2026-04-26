@@ -114,9 +114,17 @@ def encode_state(board: QuoridorBoard, agent_side: str) -> np.ndarray:
 # Action indexing
 # ---------------------------------------------------------------------------
 
+# At module level, replace the function with a dict lookup:
+_PAWN_OFFSET_TO_IDX: dict[tuple[int,int], int] = {
+    offset: i for i, offset in enumerate(PAWN_OFFSETS)
+}
+
 def pawn_action_index(dx: int, dy: int) -> int:
-    # Pawn moves occupy the first NUM_PAWN_ACTIONS slots of the action vector.
-    return PAWN_OFFSETS.index((dx, dy))
+    return _PAWN_OFFSET_TO_IDX[(dx, dy)]
+
+# def pawn_action_index(dx: int, dy: int) -> int:
+#     # Pawn moves occupy the first NUM_PAWN_ACTIONS slots of the action vector.
+#     return PAWN_OFFSETS.index((dx, dy))
 
 
 def wall_action_index(wx: int, wy: int, orient: Orientation) -> int:
@@ -198,3 +206,14 @@ def legal_action_mask(board: QuoridorBoard, agent_side: str) -> np.ndarray:
         idx = move_to_action(board, m, agent_side)
         mask[idx] = 1.0
     return mask
+
+# def legal_action_mask(board: QuoridorBoard, agent_side: str) -> np.ndarray:
+#     mask = np.zeros((NUM_ACTIONS,), dtype=np.float32)
+#     if board.current_turn != agent_side:
+#         return mask
+#     for m in board.get_legal_pawn_moves():
+#         mask[move_to_action(board, m, agent_side)] = 1.0
+#     # Use strategic placements during training — much faster than full enumeration
+#     for m in board.get_strategic_wall_placements():
+#         mask[move_to_action(board, m, agent_side)] = 1.0
+#     return mask

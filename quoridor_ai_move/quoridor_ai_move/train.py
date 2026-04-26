@@ -99,6 +99,8 @@ def main(argv=None):
     p.add_argument("--distributed", action="store_true")
     p.add_argument("--filters", type=int, default=64)
     p.add_argument("--blocks", type=int, default=4)
+    p.add_argument("--tau", type=float, default=0.005,
+               help="Soft target update rate. Set to 1.0 for hard copy.")
     # ADDED: argument to set tensorboard log directory
     p.add_argument("--tb-log-dir", type=str, default="./quoridor_tensorboard/")
     args = p.parse_args(argv)
@@ -149,8 +151,14 @@ def main(argv=None):
         else:
             draws += 1
 
-        # ADDED: track episode-level metrics
-        ep_reward = sum(t.reward for t in trans)
+        # # ADDED: track episode-level metrics
+        # ep_reward = sum(t.reward for t in trans)
+
+        # # Instead of summing all transitions (bot + player cancel out):
+        # ep_reward = sum(t.reward for t in trans if t.reward != 0.0)
+        # Or better, track win/loss as +1/-1 explicitly:
+        ep_reward = 1.0 if status == "bot_wins" else (-1.0 if status == "player_wins" else 0.0)
+
         ep_length = len(trans)
         ep_loss = None 
 
@@ -163,8 +171,11 @@ def main(argv=None):
                 loss = agent.train_on_batch(batch) # Returns float loss
                 batch_losses.append(loss)
                 step += 1
+
                 if step % args.target_sync_every == 0:
                     agent.update_target()
+
+                # agent.update_target()
 
             ep_loss = sum(batch_losses) / len(batch_losses)
             recent_losses.append(ep_loss)
