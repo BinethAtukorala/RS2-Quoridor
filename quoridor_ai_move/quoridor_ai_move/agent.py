@@ -5,8 +5,15 @@ from pathlib import Path
 import numpy as np
 import tensorflow as tf
 
-from .encoder import NUM_ACTIONS
-from .model import build_qnet, masked_argmax
+# from .encoder import NUM_ACTIONS
+# from .model import build_qnet, masked_argmax
+
+try:
+    from .encoder import NUM_ACTIONS
+    from .model import build_qnet, masked_argmax
+except ImportError:
+    from encoder import NUM_ACTIONS
+    from model import build_qnet, masked_argmax
 
 
 # Deep Q-Network agent that learns to play Quoridor.

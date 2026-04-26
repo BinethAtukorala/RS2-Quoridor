@@ -15,9 +15,18 @@ from pathlib import Path
 import numpy as np
 import tensorflow as tf
 
-from .agent import DQNAgent
-from .replay_buffer import ReplayBuffer
-from .self_play import play_game
+# from .agent import DQNAgent
+# from .replay_buffer import ReplayBuffer
+# from .self_play import play_game
+
+try:
+    from .agent import DQNAgent
+    from .replay_buffer import ReplayBuffer
+    from .self_play import play_game
+except ImportError:
+    from agent import DQNAgent
+    from replay_buffer import ReplayBuffer
+    from self_play import play_game
 
 
 def make_strategy(distributed: bool) -> tf.distribute.Strategy:
@@ -45,7 +54,13 @@ def _epsilon_greedy_factory(agent: DQNAgent, eps_ref: list[float]):
     # eps_ref is a single-element list so the outer training loop can mutate
     # epsilon (decay it over episodes) without rebuilding the closure.
     def policy(board, side, mask):
-        from .encoder import encode_state
+        # from .encoder import encode_state
+        
+        try:
+            from .encoder import encode_state
+        except ImportError:
+            from encoder import encode_state
+
         s = encode_state(board, side)
         return agent.select_action(s, mask, eps_ref[0])
     return policy

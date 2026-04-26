@@ -5,7 +5,12 @@ from __future__ import annotations
 import tensorflow as tf
 from tensorflow.keras import layers, Model
 
-from .encoder import BOARD_N, NUM_ACTIONS, STATE_CHANNELS
+# from .encoder import BOARD_N, NUM_ACTIONS, STATE_CHANNELS
+
+try:
+    from .encoder import BOARD_N, NUM_ACTIONS, STATE_CHANNELS
+except ImportError:
+    from encoder import BOARD_N, NUM_ACTIONS, STATE_CHANNELS
 
 
 def _residual_block(x, filters: int):

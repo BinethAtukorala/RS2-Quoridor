@@ -6,7 +6,12 @@ from pathlib import Path
 
 import numpy as np
 
-from .encoder import BOARD_N, NUM_ACTIONS, STATE_CHANNELS
+# from .encoder import BOARD_N, NUM_ACTIONS, STATE_CHANNELS
+
+try:
+    from .encoder import BOARD_N, NUM_ACTIONS, STATE_CHANNELS
+except ImportError:
+    from encoder import BOARD_N, NUM_ACTIONS, STATE_CHANNELS
 
 
 # Fixed-capacity circular buffer holding DQN transitions

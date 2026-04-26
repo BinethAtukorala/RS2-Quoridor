@@ -9,14 +9,20 @@ from __future__ import annotations
 
 import numpy as np
 
-from quoridor_game.quoridor_utils import (
-    MoveType,
-    Move,
-    Orientation,
-    Pawn,
-    QuoridorBoard,
-    Wall,
-)
+# from quoridor_game.quoridor_utils import (
+#     MoveType,
+#     Move,
+#     Orientation,
+#     Pawn,
+#     QuoridorBoard,
+#     Wall,
+# )
+
+# NEW — works whether you run as a package or directly
+try:
+    from quoridor_game.quoridor_utils import MoveType, Move, Orientation, Pawn, QuoridorBoard, Wall
+except ImportError:
+    from quoridor_utils import MoveType, Move, Orientation, Pawn, QuoridorBoard, Wall
 
 # We use a 5x5 Quoridor variant (smaller than tournament 9x9) for
 # tractable training on modest hardware.

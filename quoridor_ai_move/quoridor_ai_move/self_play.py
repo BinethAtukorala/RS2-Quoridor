@@ -11,10 +11,19 @@ from typing import Callable
 
 import numpy as np
 
-from quoridor_game.quoridor_utils import QuoridorBoard
+# from quoridor_game.quoridor_utils import QuoridorBoard
 
-from .encoder import encode_state, legal_action_mask, action_to_move, NUM_ACTIONS
+try:
+    from quoridor_game.quoridor_utils import QuoridorBoard
+except ImportError:
+    from quoridor_utils import QuoridorBoard
 
+# from .encoder import encode_state, legal_action_mask, action_to_move, NUM_ACTIONS
+
+try:
+    from .encoder import encode_state, legal_action_mask, action_to_move, NUM_ACTIONS
+except ImportError:
+    from encoder import encode_state, legal_action_mask, action_to_move, NUM_ACTIONS
 
 # A policy maps (board, side-to-move, legal-action-mask) -> action index.
 Policy = Callable[[QuoridorBoard, str, np.ndarray], int]
