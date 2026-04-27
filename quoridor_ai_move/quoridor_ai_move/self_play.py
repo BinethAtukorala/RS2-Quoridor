@@ -25,6 +25,11 @@ try:
 except ImportError:
     from encoder import encode_state, legal_action_mask, action_to_move, NUM_ACTIONS
 
+try:
+    from .reward import potential, shaped_step
+except ImportError:
+    from reward import potential, shaped_step
+
 # A policy maps (board, side-to-move, legal-action-mask) -> action index.
 Policy = Callable[[QuoridorBoard, str, np.ndarray], int]
 
@@ -56,12 +61,16 @@ def play_game(
     record_sides: tuple[str, ...] = ("bot",),
     max_plies: int = 200,
     board_n: int = 5,
+    shaping_coef: float = 0.0,   # 0 disables PBRS; ~0.1 is a good default
+    gamma: float = 0.99,         # discount used for the PBRS term
 ) -> tuple[list[Transition], str]:
     board = QuoridorBoard(n=board_n)
     transitions: list[Transition] = []
-    # Per-side memory: when it's our turn, we recorded (state, action) and we
-    # close that transition as soon as we see the *next* state from our PoV.
-    pending: dict[str, tuple[np.ndarray, int]] = {}
+    # Per-side memory: (state_tensor, action, phi_at_action_time). The
+    # potential is captured at the moment the side committed to its action
+    # so the shaping term gamma*Phi(s') - Phi(s) reflects the change in
+    # advantage that resulted from that action.
+    pending: dict[str, tuple[np.ndarray, int, float]] = {}
 
     ply = 0
     # max_plies guards against pathological non-terminating games during training.
@@ -69,22 +78,26 @@ def play_game(
         side = board.current_turn
         mask = legal_action_mask(board, side)
         if mask.sum() == 0:
-            # No legal moves: treat as game over to avoid an infinite loop.
             break
         state = encode_state(board, side)
+        # Phi at this state (from `side`'s POV); used for both closing the
+        # previous pending transition (as Phi(s')) and capturing the new
+        # pending transition (as Phi(s)).
+        phi_now = potential(board, side, shaping_coef) if shaping_coef > 0 else 0.0
 
-        # Close the previous pending transition for this side (non-terminal, r=0).
+        # Close the previous pending transition for this side (non-terminal).
         if side in record_sides and side in pending:
-            prev_s, prev_a = pending.pop(side)
-            transitions.append(Transition(prev_s, prev_a, 0.0, state, False, mask))
+            prev_s, prev_a, prev_phi = pending.pop(side)
+            r = 0.0
+            if shaping_coef > 0:
+                r = shaped_step(r, prev_phi, phi_now, gamma)
+            transitions.append(Transition(prev_s, prev_a, r, state, False, mask))
 
-        # Ask the appropriate policy for an action and try to apply it.
         policy = bot_policy if side == "bot" else player_policy
         action = policy(board, side, mask)
         move = action_to_move(board, action, side)
         if move is None or not board.apply_move(move):
-            # An illegal move ends the rollout with a strongly negative
-            # reward so the agent learns to avoid it.
+            # Illegal action: end with hard penalty (skip shaping).
             if side in record_sides:
                 ns = encode_state(board, side)
                 transitions.append(Transition(state, action, -1.0, ns, True,
@@ -92,24 +105,21 @@ def play_game(
             break
 
         if side in record_sides:
-            # Save what we just did so we can close it next time around.
-            pending[side] = (state, action)
+            pending[side] = (state, action, phi_now)
         ply += 1
 
         if board.game_status != "in_progress":
             break
 
-    # # The last action of each recorded side never had a chance to be closed
-    # # in the main loop -- attach the terminal reward to it here.
-    # for side, (s, a) in pending.items():
-    #     r = _terminal_reward(board, side)
-
     timed_out = board.game_status == "in_progress"  # hit max_plies
-    for side, (s, a) in pending.items():
+    for side, (s, a, prev_phi) in pending.items():
         if timed_out:
-            r = -0.1   # small penalty for not finishing — discourages stalling
+            r = -0.1
         else:
             r = _terminal_reward(board, side)
+        # Phi(terminal) = 0 by convention -> shaping subtracts prev_phi.
+        if shaping_coef > 0:
+            r = shaped_step(r, prev_phi, 0.0, gamma)
         ns = encode_state(board, side)
         nm = legal_action_mask(board, side) if board.game_status == "in_progress" else \
              np.zeros(NUM_ACTIONS, dtype=np.float32)

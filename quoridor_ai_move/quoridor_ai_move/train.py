@@ -84,7 +84,7 @@ def main(argv=None):
     # epsilon decay schedule, model architecture knobs, and where to save.
     p = argparse.ArgumentParser()
     p.add_argument("--episodes", type=int, default=2000)
-    p.add_argument("--model-dir", type=str, default=str(Path.home() / "quoridor_models" / "latest"))
+    p.add_argument("--model-dir", type=str, default=str(Path.cwd() / "quoridor_models" / "latest"))
     p.add_argument("--resume", action="store_true", help="Load existing weights before training")
     p.add_argument("--batch-size", type=int, default=256)
     p.add_argument("--replay-capacity", type=int, default=200_000)

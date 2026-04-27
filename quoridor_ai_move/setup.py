@@ -23,6 +23,8 @@ setup(
             'ai_move_node = quoridor_ai_move.ai_move_node:main',
             'train = quoridor_ai_move.train:main',
             'train_vs_model = quoridor_ai_move.train_vs_model:main',
+            'train_ros = quoridor_ai_move.train_ros:main',
+            'train_vs_minimax = quoridor_ai_move.train_vs_minimax:main',
         ],
     },
 )
