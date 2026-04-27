@@ -35,6 +35,13 @@ class DQNAgent:
                 learning_rate=lr,
                 clipnorm=grad_clip   # gradient clipping built into optimizer
             )
+            # Build the optimizer eagerly inside the strategy scope so its
+            # slot variables (Adam momentum/velocity) are colocated with the
+            # model weights. Otherwise the lazy build() fires inside the
+            # @tf.function _train_step on the first call, outside any scope,
+            # and MultiWorkerMirroredStrategy raises "Need to be inside
+            # with strategy.scope()".
+            self.optimizer.build(self.q_net.trainable_variables)
 
     def select_action(self, state: np.ndarray, mask: np.ndarray, epsilon: float) -> int:
         legal = np.flatnonzero(mask > 0.5)
