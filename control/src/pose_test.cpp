@@ -13,7 +13,6 @@
 #include <shape_msgs/msg/solid_primitive.hpp>
 #include <geometry_msgs/msg/pose.hpp>
 
-// Rotate (x,y) 90 deg anticlockwise
 void rotate90CCW(double &x, double &y)
 {
     double tmp = x;
@@ -41,7 +40,6 @@ int main(int argc, char * argv[])
 
     rclcpp::sleep_for(std::chrono::seconds(2));
 
-    // ======= TUNEABLE ENVIRONMENT PARAMETERS =======
     struct WorkspaceBounds {
         double table_x = 1.0;
         double table_y = 1.0;
@@ -50,13 +48,11 @@ int main(int argc, char * argv[])
         double side_offset = 0.6;
         double wall_height = 1.0;
     } workspace;
-    // ==============================================
 
     std::vector<moveit_msgs::msg::CollisionObject> collision_objects;
     std::vector<moveit_msgs::msg::ObjectColor> object_colors;
     std::string frame_id = move_group.getPlanningFrame();
 
-    // --- TABLE ---
     moveit_msgs::msg::CollisionObject table;
     table.header.frame_id = frame_id;
     table.id = "table";
@@ -76,7 +72,6 @@ int main(int argc, char * argv[])
     table.operation = table.ADD;
     collision_objects.push_back(table);
 
-    // --- BACK WALL (red, rotated 90°) ---
     moveit_msgs::msg::CollisionObject back_wall;
     back_wall.header.frame_id = frame_id;
     back_wall.id = "back_wall";
@@ -112,7 +107,6 @@ int main(int argc, char * argv[])
     back_color.color.a = 0.8;
     object_colors.push_back(back_color);
 
-    // --- LEFT WALL (green) ---
     moveit_msgs::msg::CollisionObject left_wall;
     left_wall.header.frame_id = frame_id;
     left_wall.id = "left_wall";
@@ -144,7 +138,6 @@ int main(int argc, char * argv[])
     left_color.color.a = 0.8;
     object_colors.push_back(left_color);
 
-    // --- RIGHT WALL (blue) ---
     moveit_msgs::msg::CollisionObject right_wall;
     right_wall.header.frame_id = frame_id;
     right_wall.id = "right_wall";
@@ -176,10 +169,6 @@ int main(int argc, char * argv[])
     right_color.color.a = 0.8;
     object_colors.push_back(right_color);
 
-    // Apply collision objects
-    // planning_scene_interface.applyCollisionObjects(collision_objects);
-
-    // Publish colors to PlanningScene for RViz
     auto scene_pub = node->create_publisher<moveit_msgs::msg::PlanningScene>("planning_scene", 10);
     moveit_msgs::msg::PlanningScene planning_scene_msg;
     planning_scene_msg.is_diff = true;
@@ -190,50 +179,8 @@ int main(int argc, char * argv[])
 
     rclcpp::sleep_for(std::chrono::seconds(2));
 
-    // -------- TEST MOTION (POSE BASED) --------
     geometry_msgs::msg::Pose target_pose;
-    // target_pose.position.x = 0.127;  // example pose
-    // target_pose.position.y = 0.422;
-    // target_pose.position.z = 0.694;
-    // target_pose.orientation.x = 0.567;
-    // target_pose.orientation.y = 0.422;
-    // target_pose.orientation.z = 0.567;
-    // target_pose.orientation.w = -0.422;
- 
-    // target_pose.position.x = -0.092;  // example pose WORKS
-    // target_pose.position.y = 0.365;
-    // target_pose.position.z = 0.169;
-    // target_pose.orientation.x = 0.729;
-    // target_pose.orientation.y = 0.685;
-    // target_pose.orientation.z = 0.004;
-    // target_pose.orientation.w = 0.014;
-
-    // target_pose.position.x = 0.22750182;  // example pose WORKS
-    // target_pose.position.y = -0.16011118;
-    // target_pose.position.z = 0.20633254;
-    // target_pose.orientation.x = 0.00951885;
-    // target_pose.orientation.y = -0.00420109;
-    // target_pose.orientation.z = 0.70902012;
-    // target_pose.orientation.w = 0.70511149;
-
-    // Bottom right grid
-    // target_pose.position.x =  0.23244277;  // example pose WORKS
-    // target_pose.position.y = -0.15387589;
-    // target_pose.position.z = 0.20658625;
-    // target_pose.orientation.x = 0.70839272;
-    // target_pose.orientation.y = 0.70573302;
-    // target_pose.orientation.z = -0.00712423;
-    // target_pose.orientation.w = -0.00836031;
-
-    // target_pose.position.x =  -0.02623808;  // example pose WORKS
-    // target_pose.position.y = 0.10538764;
-    // target_pose.position.z = 0.21221205;
-    // target_pose.orientation.x = 0.70839272;
-    // target_pose.orientation.y = 0.70573302;
-    // target_pose.orientation.z = -0.00712423;
-    // target_pose.orientation.w = -0.00836031;
-
-    target_pose.position.x =  0.43022458;  // example pose WORKS
+    target_pose.position.x =  0.43022458;
     target_pose.position.y = 0.09734114;
     target_pose.position.z = 0.23432327;
     target_pose.orientation.x = -0.50130461;
@@ -241,29 +188,16 @@ int main(int argc, char * argv[])
     target_pose.orientation.z = 0.49546997;
     target_pose.orientation.w = 0.50723074;
 
-
-
-
-    // target_pose.position.x = -0.09;  // example pose
-    // target_pose.position.y = 0.441;
-    // target_pose.position.z = 0.680;
-    // target_pose.orientation.x = 0.418;
-    // target_pose.orientation.y = 0.570;
-    // target_pose.orientation.z = 0.570;
-    // target_pose.orientation.w = -0.418;
-
-
     move_group.setPoseTarget(target_pose);
 
-    // Check if pose is reachable and safe
     moveit::planning_interface::MoveGroupInterface::Plan plan;
     bool success = (move_group.plan(plan) == moveit::core::MoveItErrorCode::SUCCESS);
 
     if(success) {
-        RCLCPP_INFO(node->get_logger(), "Pose reachable, executing move");
+        RCLCPP_INFO(node->get_logger(), "Pose is reachable, executing move");
         move_group.move();
     } else {
-        RCLCPP_WARN(node->get_logger(), "Pose not reachable or collides, skipping move");
+        RCLCPP_WARN(node->get_logger(), "Pose is not reachable or might collide, skipping move");
     }
 
     rclcpp::shutdown();
