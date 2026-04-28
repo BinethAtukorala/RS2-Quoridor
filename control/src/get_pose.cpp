@@ -37,7 +37,7 @@ int main(int argc, char * argv[])
     auto node = rclcpp::Node::make_shared("get_pose");
 
     if (argc < 2) {
-        RCLCPP_ERROR(node->get_logger(), "Please provide mode: 1 = MoveIt, 2 = Real Robot");
+        RCLCPP_ERROR(node->get_logger(), "Which mode? 1 = MoveIt, 2 = Real Robot");
         return 1;
     }
 
@@ -54,14 +54,14 @@ int main(int argc, char * argv[])
     using moveit::planning_interface::MoveGroupInterface;
     MoveGroupInterface move_group(node, "ur_onrobot_manipulator");
 
-    RCLCPP_INFO(node->get_logger(), "Planning frame: %s", move_group.getPlanningFrame().c_str());
+    RCLCPP_INFO(node->get_logger(), "Planning frame - %s", move_group.getPlanningFrame().c_str());
     rclcpp::sleep_for(std::chrono::seconds(2));
 
     geometry_msgs::msg::Pose current_pose;
     bool got_pose = false;
 
     if(mode == 1){
-        RCLCPP_INFO(node->get_logger(), "Mode 1: MoveIt Pose");
+        RCLCPP_INFO(node->get_logger(), "Mode 1 - MoveIt Pose");
 
         rclcpp::Rate rate(10);
         for(int i=0; i<50; ++i)
@@ -80,7 +80,7 @@ int main(int argc, char * argv[])
         }
     }
     else if(mode == 2){
-        RCLCPP_INFO(node->get_logger(), "Mode 2: Real Robot Pose (FK from /joint_states)");
+        RCLCPP_INFO(node->get_logger(), "Mode 2 - Real Robot Pose");
 
         robot_model_loader::RobotModelLoader robot_model_loader(node);
         auto robot_model = robot_model_loader.getModel();
