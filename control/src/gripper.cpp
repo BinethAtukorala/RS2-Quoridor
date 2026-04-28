@@ -14,10 +14,10 @@ using namespace std::chrono_literals;
 enum class GripperState
 {
     IDLE,
-    MOVING,        // open / close / drop — target sent directly, wait for joint
-    PICKUP_OPEN,   // pickup: open first (direct send)
+    MOVING,        // open/close/drop
+    PICKUP_OPEN,   // pickup
     PICKUP_PAUSE,  // non-blocking pause between open and close
-    PICKUP_CLOSE,  // slow step-by-step close with stall detection
+    PICKUP_CLOSE,  // slowly close with stall detection (runs step by step)
 };
 
 class GripperNode : public rclcpp::Node
@@ -34,10 +34,6 @@ public:
         joint_sub_ = this->create_subscription<sensor_msgs::msg::JointState>(
             "/joint_states", 10,
             std::bind(&GripperNode::jointCallback, this, std::placeholders::_1));
-
-        // cmd_sub_ = this->create_subscription<std_msgs::msg::String>(
-        //     "/gripper/command", 10,
-        //     std::bind(&GripperNode::commandCallback, this, std::placeholders::_1));
 
          cmd_sub_ = this->create_subscription<std_msgs::msg::String>(
             "/gripper/command",
@@ -58,20 +54,17 @@ public:
         drop_mode_       = false;
         active_object_   = "";
 
-        sensor_tolerance_ = 0.002;  // handles 0.039 vs 0.04 discrepancy
+        sensor_tolerance_ = 0.002;
         tolerance_        = 0.005;
-        pickup_step_      = 0.001;  // slow step only used during pickup close
+        pickup_step_      = 0.001;
 
         expected_width_["wall"] = 0.017;
         expected_width_["pawn"] = 0.024;
 
-        RCLCPP_INFO(this->get_logger(), "Gripper node ready.");
+        RCLCPP_INFO(this->get_logger(), "Gripper node is ready.");
     }
 
 private:
-    // ================================================================
-    //  JOINT CALLBACK
-    // ================================================================
     void jointCallback(const sensor_msgs::msg::JointState::SharedPtr msg)
     {
         for (size_t i = 0; i < msg->name.size(); ++i)
@@ -92,14 +85,11 @@ private:
         }
     }
 
-    // ================================================================
-    //  COMMAND CALLBACK
-    // ================================================================
     void commandCallback(const std_msgs::msg::String::SharedPtr msg)
     {
         if (state_ != GripperState::IDLE)
         {
-            RCLCPP_WARN(this->get_logger(), "Gripper busy — ignoring: %s", msg->data.c_str());
+            RCLCPP_WARN(this->get_logger(), "Gripper is busy, therefore ignoring: %s", msg->data.c_str());
             return;
         }
 
@@ -123,11 +113,7 @@ private:
             RCLCPP_WARN(this->get_logger(), "Unknown command: %s", cmd.c_str());
     }
 
-    // ================================================================
-    //  START HELPERS
-    // ================================================================
-
-    // open / close / drop: send target directly, controller handles ramping
+    // open/close/drop
     void startMove(double target, bool is_drop)
     {
         target_width_ = target;
@@ -147,7 +133,7 @@ private:
             target_width_ = 0.04;
             state_        = GripperState::PICKUP_OPEN;
             publishCommand(0.04);
-            RCLCPP_INFO(this->get_logger(), "Opening before pickup (currently %.3f)...", current_width_);
+            RCLCPP_INFO(this->get_logger(), "Opening gripper before pickup (Current width is - %.3f)", current_width_);
         }
         else
         {
@@ -161,26 +147,24 @@ private:
         prev_width_   = current_width_;
         stable_count_ = 0;
         state_        = GripperState::PICKUP_CLOSE;
-        RCLCPP_INFO(this->get_logger(), "Pickup: closing slowly from %.3f", current_width_);
+        RCLCPP_INFO(this->get_logger(), "Pickup: Closing slowly from %.3f", current_width_);
     }
 
     void startDrop()
     {
         if (expected_width_.find(active_object_) == expected_width_.end())
         {
-            RCLCPP_ERROR(this->get_logger(), "Unknown object for drop: %s", active_object_.c_str());
+            RCLCPP_ERROR(this->get_logger(), "Unknown object for drop - %s", active_object_.c_str());
             publishStatus("fail");
             return;
         }
 
         double expected = expected_width_[active_object_];
 
-        // Use loose tolerance (4x) to account for grip drift between pickup and drop
-        // e.g. wall stalls at 0.012, drifts to 0.009 — tight 0.005 check would block drop
         if (std::abs(current_width_ - expected) > tolerance_ * 4)
         {
             RCLCPP_WARN(this->get_logger(),
-                        "Drop blocked: holding wrong object (%.3f vs %.3f)",
+                        "Drop was blocked: Holding wrong object (Current width - %.3f vs Expected width - %.3f)",
                         current_width_, expected);
             publishStatus("fail");
             return;
@@ -189,9 +173,6 @@ private:
         startMove(0.04, true);
     }
 
-    // ================================================================
-    //  TIMER TICK
-    // ================================================================
     void timerTick()
     {
         if (!joint_received_) return;
@@ -206,14 +187,11 @@ private:
         }
     }
 
-    // ----------------------------------------------------------------
-    //  TICK: MOVING — wait for joint to confirm arrival
-    // ----------------------------------------------------------------
     void tickMoving()
     {
         if (std::abs(current_width_ - target_width_) <= sensor_tolerance_)
         {
-            RCLCPP_INFO(this->get_logger(), "Gripper reached %.3f (actual %.3f)",
+            RCLCPP_INFO(this->get_logger(), "Gripper reached width of %.3f (Actual width is %.3f)",
                         target_width_, current_width_);
             state_ = GripperState::IDLE;
 
@@ -222,39 +200,24 @@ private:
 
             publishStatus("done");
         }
-        // else: wait — command already sent, controller is moving
     }
 
-    // ----------------------------------------------------------------
-    //  TICK: PICKUP_OPEN — wait for full open, then pause
-    // ----------------------------------------------------------------
     void tickPickupOpen()
     {
         if (std::abs(current_width_ - target_width_) <= sensor_tolerance_)
         {
-            RCLCPP_INFO(this->get_logger(), "Opened to %.3f — pausing", current_width_);
-            pause_ticks_ = 4;  // 4 x 50ms = 200ms non-blocking
+            RCLCPP_INFO(this->get_logger(), "Opened to %.3f - Pausing", current_width_);
+            pause_ticks_ = 4;
             state_       = GripperState::PICKUP_PAUSE;
         }
-        // else: wait — command already sent
     }
 
-    // ----------------------------------------------------------------
-    //  TICK: PICKUP_PAUSE
-    // ----------------------------------------------------------------
     void tickPause()
     {
         if (--pause_ticks_ <= 0)
             beginPickupClose();
     }
 
-    // ----------------------------------------------------------------
-    //  TICK: PICKUP_CLOSE — slow step, stall detection
-    //
-    //  Stall detection only activates once sent_command_ is below 0.015m.
-    //  This prevents false stall triggers from natural deceleration at
-    //  the start of closing motion.
-    // ----------------------------------------------------------------
     void tickPickupClose()
     {
         bool stall_detection_active = (sent_command_ < 0.015);
@@ -268,12 +231,10 @@ private:
             else
                 stable_count_ = 0;
 
-            // 5 consecutive ticks (250ms) with no movement = object held or fully closed
             if (stable_count_ >= 5)
             {
-                // Hold exactly at current real position — do NOT squeeze further.
-                // Controller maintains force here without continuing to close.
-                RCLCPP_INFO(this->get_logger(), "Gripper stalled at %.3f — holding", current_width_);
+
+                RCLCPP_INFO(this->get_logger(), "Gripper stalled at %.3f — Holding", current_width_);
                 publishCommand(current_width_);
                 sent_command_ = current_width_;
                 state_        = GripperState::IDLE;
@@ -288,7 +249,6 @@ private:
 
         prev_width_ = current_width_;
 
-        // Send next small closing step
         if (sent_command_ > 0.0)
         {
             sent_command_ = std::max(sent_command_ - pickup_step_, 0.0);
@@ -296,7 +256,6 @@ private:
         }
         else
         {
-            // sent_command_ at 0, no stall — fully closed, nothing grabbed
             RCLCPP_INFO(this->get_logger(), "Gripper fully closed at %.3f", current_width_);
             publishCommand(current_width_);
             sent_command_ = current_width_;
@@ -305,35 +264,29 @@ private:
         }
     }
 
-    // ----------------------------------------------------------------
-    //  PICKUP EVALUATION
-    // ----------------------------------------------------------------
     void evaluatePickup()
     {
         double expected = expected_width_[active_object_];
 
         if (std::abs(current_width_ - expected) <= tolerance_)
         {
-            RCLCPP_INFO(this->get_logger(), "Pickup SUCCESS: %.3f (expected %.3f)",
+            RCLCPP_INFO(this->get_logger(), "Pickup was SUCCESSFULL: %.3f (Expected width - %.3f)",
                         current_width_, expected);
             publishStatus("success");
         }
         else if (current_width_ < 0.005 + sensor_tolerance_)
         {
-            RCLCPP_ERROR(this->get_logger(), "Pickup FAILED — nothing grasped: %.3f", current_width_);
+            RCLCPP_ERROR(this->get_logger(), "Pickup FAILED - Nothing was grasped: %.3f", current_width_);
             publishStatus("fail");
         }
         else
         {
-            RCLCPP_WARN(this->get_logger(), "Pickup WRONG object: %.3f (expected %.3f)",
+            RCLCPP_WARN(this->get_logger(), "Pickup WRONG object: %.3f (Expected width was%.3f)",
                         current_width_, expected);
             publishStatus("wrong");
         }
     }
 
-    // ================================================================
-    //  HELPERS
-    // ================================================================
     void publishCommand(double width)
     {
         std_msgs::msg::Float64MultiArray msg;
@@ -348,9 +301,6 @@ private:
         status_pub_->publish(msg);
     }
 
-    // ================================================================
-    //  MEMBERS
-    // ================================================================
     rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr gripper_pub_;
     rclcpp::Publisher<std_msgs::msg::String>::SharedPtr            status_pub_;
     rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr  joint_sub_;
@@ -359,8 +309,8 @@ private:
 
     GripperState state_;
 
-    double current_width_;   // real value from joint_states
-    double sent_command_;    // tracks incremental command during pickup close
+    double current_width_;  
+    double sent_command_;   
     double target_width_;
     double prev_width_;
     int    stable_count_;
@@ -376,9 +326,6 @@ private:
     std::map<std::string, double> expected_width_;
 };
 
-// ================================================================
-//  MAIN
-// ================================================================
 int main(int argc, char * argv[])
 {
     rclcpp::init(argc, argv);
