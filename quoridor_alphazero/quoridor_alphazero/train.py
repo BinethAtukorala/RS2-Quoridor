@@ -1,0 +1,280 @@
+"""AlphaZero training entry point for 5x5 Quoridor (Multiprocessing Pool Version).
+
+Loop:
+  1. Distribute N self-play games to N CPU workers using the current network.
+  2. Push every (state, mcts_policy, z) sample from all games into the replay buffer.
+  3. Run SGD steps scaled by the number of games played.
+  4. Periodically checkpoint the network and the buffer.
+"""
+from __future__ import annotations
+
+import argparse
+import os
+import time
+import multiprocessing as mp  # [NEW]
+from collections import deque
+from pathlib import Path
+
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+
+import numpy as np
+import tensorflow as tf
+
+try:
+    from .mcts import MCTS
+    from .network import build_az_net
+    from .replay_buffer import ReplayBuffer
+    from .self_play import play_game
+except ImportError:
+    from mcts import MCTS
+    from network import build_az_net
+    from replay_buffer import ReplayBuffer
+    from self_play import play_game
+
+
+def _atomic_save(model: tf.keras.Model, model_dir: str, keep_backups: int = 3):
+    d = Path(model_dir); d.mkdir(parents=True, exist_ok=True)
+    target = d / "az_net.weights.h5"
+    tmp    = d / "az_net.tmp.weights.h5"
+    model.save_weights(str(tmp))
+    if target.exists() and keep_backups > 0:
+        for i in range(keep_backups, 1, -1):
+            prev = d / f"az_net.weights.bak{i-1}.h5"
+            nxt  = d / f"az_net.weights.bak{i}.h5"
+            if prev.exists():
+                prev.replace(nxt)
+        target.replace(d / "az_net.weights.bak1.h5")
+    tmp.replace(target)
+
+
+def _make_evaluator(model: tf.keras.Model):
+    @tf.function(reduce_retracing=True)
+    def _forward(x):
+        logits, value = model(x, training=False)
+        probs = tf.nn.softmax(logits, axis=-1)
+        return probs, tf.squeeze(value, axis=-1)
+
+    def evaluator(state_batch: np.ndarray):
+        probs, value = _forward(tf.convert_to_tensor(state_batch, dtype=tf.float32))
+        return probs.numpy(), value.numpy()
+    return evaluator
+
+
+# [NEW] Standalone worker function for Multiprocessing
+def self_play_worker(worker_args):
+    """Isolated worker process for parallel self-play."""
+    (weights, filters, blocks, simulations, c_puct, 
+     alpha, eps, temp_moves, max_plies) = worker_args
+
+    # 1. Re-import locally to ensure safe process separation
+    import tensorflow as tf
+    try:
+        from .mcts import MCTS
+        from .network import build_az_net
+        from .self_play import play_game
+    except ImportError:
+        from mcts import MCTS
+        from network import build_az_net
+        from self_play import play_game
+
+    # 2. Prevent the worker from hogging the entire GPU VRAM
+    for g in tf.config.list_physical_devices("GPU"):
+        try: tf.config.experimental.set_memory_growth(g, True)
+        except Exception: pass
+
+    # 3. Rebuild model and load the latest weights from the master process
+    model = build_az_net(filters=filters, n_blocks=blocks)
+    model.set_weights(weights)
+
+    # 4. Build evaluator and MCTS
+    @tf.function(reduce_retracing=True)
+    def _forward(x):
+        logits, value = model(x, training=False)
+        return tf.nn.softmax(logits, axis=-1), tf.squeeze(value, axis=-1)
+
+    def evaluator(state_batch):
+        probs, value = _forward(tf.convert_to_tensor(state_batch, dtype=tf.float32))
+        return probs.numpy(), value.numpy()
+
+    mcts = MCTS(evaluator, n_simulations=simulations, c_puct=c_puct,
+                dirichlet_alpha=alpha, dirichlet_eps=eps)
+
+    # 5. Play one game and return the results
+    return play_game(mcts, max_plies=max_plies, temp_moves=temp_moves)
+
+
+def main(argv=None):
+    p = argparse.ArgumentParser()
+    p.add_argument("--episodes",          type=int,   default=10000)
+    p.add_argument("--model-dir",         type=str,   default=str(Path.cwd() / "quoridor_az_models" / "latest"))
+    p.add_argument("--resume",            action="store_true")
+    p.add_argument("--simulations",       type=int,   default=64,
+                   help="MCTS simulations per move during self-play.")
+    p.add_argument("--c-puct",            type=float, default=1.5)
+    p.add_argument("--dirichlet-alpha",   type=float, default=0.3)
+    p.add_argument("--dirichlet-eps",     type=float, default=0.25,
+                   help="Mix this fraction of Dirichlet noise into root priors during self-play.")
+    p.add_argument("--temp-moves",        type=int,   default=12,
+                   help="Number of opening plies played at temperature=1 before greedy.")
+    p.add_argument("--max-plies",         type=int,   default=75)
+    p.add_argument("--batch-size",        type=int,   default=256)
+    p.add_argument("--replay-capacity",   type=int,   default=200_000)
+    p.add_argument("--updates-per-game",  type=int,   default=8,
+                   help="Number of SGD steps after each self-play game.")
+    p.add_argument("--save-every",        type=int,   default=50, help="games")
+    p.add_argument("--lr",                type=float, default=1e-3)
+    p.add_argument("--lr-resume",         type=float, default=2e-4)
+    p.add_argument("--filters",           type=int,   default=32)
+    p.add_argument("--blocks",            type=int,   default=3)
+    p.add_argument("--value-loss-weight", type=float, default=1.0)
+    p.add_argument("--tb-log-dir",        type=str,   default="./quoridor_az_tensorboard/")
+    
+    # [NEW] Added workers argument
+    p.add_argument("--workers",           type=int,   default=12, 
+                   help="Number of CPU cores to use for parallel self-play.")
+    args = p.parse_args(argv)
+
+    # GPU memory growth so we don't grab all of it.
+    for g in tf.config.list_physical_devices("GPU"):
+        try: tf.config.experimental.set_memory_growth(g, True)
+        except Exception: pass
+
+    model = build_az_net(filters=args.filters, n_blocks=args.blocks)
+    weights_path = Path(args.model_dir) / "az_net.weights.h5"
+    if args.resume and weights_path.exists():
+        model.load_weights(str(weights_path))
+        print(f"[az] Resumed weights from {weights_path}")
+    effective_lr = args.lr_resume if args.resume else args.lr
+    optimizer = tf.keras.optimizers.Adam(learning_rate=effective_lr, clipnorm=1.0)
+    print(f"[az] Optimizer lr={effective_lr}")
+
+    buffer = ReplayBuffer(capacity=args.replay_capacity)
+    buffer_path = os.path.join(args.model_dir, "replay_buffer.pkl")
+    if args.resume and os.path.exists(buffer_path):
+        try:
+            buffer.load(buffer_path)
+            print(f"[az] Resumed replay buffer (size={len(buffer)})")
+        except Exception as e:
+            print(f"[az] Buffer load failed: {e}")
+
+    writer = tf.summary.create_file_writer(args.tb_log_dir)
+    print(f"[az] TensorBoard: tensorboard --logdir={args.tb_log_dir}")
+
+    @tf.function(reduce_retracing=True)
+    def _train_step(s, pi, z):
+        with tf.GradientTape() as tape:
+            logits, value = model(s, training=True)
+            value = tf.squeeze(value, axis=-1)
+            # Cross-entropy between MCTS policy (soft target) and predicted policy.
+            log_p = tf.nn.log_softmax(logits, axis=-1)
+            policy_loss = -tf.reduce_mean(tf.reduce_sum(pi * log_p, axis=-1))
+            value_loss  = tf.reduce_mean(tf.square(z - value))
+            l2_loss     = tf.add_n(model.losses) if model.losses else 0.0
+            loss = policy_loss + args.value_loss_weight * value_loss + l2_loss
+        grads = tape.gradient(loss, model.trainable_variables)
+        optimizer.apply_gradients(zip(grads, model.trainable_variables))
+        return loss, policy_loss, value_loss
+
+    recent_lengths:  deque[int] = deque(maxlen=50)
+    recent_outcomes: deque[int] = deque(maxlen=50)
+    bot_wins = player_wins = draws = 0
+    t0 = time.time()
+    grad_step = 0
+    
+    # [MODIFIED] Calculate batches needed for total episodes
+    total_batches = (args.episodes // args.workers) + 1
+    total_episodes_played = 0
+
+    print(f"[az] Starting Pool with {args.workers} workers...")
+
+    # [MODIFIED] The main loop now iterates over batches, not individual games
+    for batch in range(1, total_batches + 1):
+        
+        # 1. Package the current weights and parameters for the workers
+        current_weights = model.get_weights()
+        worker_args = (current_weights, args.filters, args.blocks,
+                       args.simulations, args.c_puct, args.dirichlet_alpha, 
+                       args.dirichlet_eps, args.temp_moves, args.max_plies)
+
+        # 2. Launch the parallel games
+        with mp.Pool(args.workers) as pool:
+            results = pool.map(self_play_worker, [worker_args] * args.workers)
+
+        ep_total = ep_pol = ep_val = 0.0
+        n_updates = 0
+
+        # 3. Process all results from the batch
+        for samples, status, ply in results:
+            total_episodes_played += 1
+            
+            for s in samples:
+                buffer.add(s.state, s.policy, s.z)
+            
+            recent_lengths.append(ply)
+            if status == "bot_wins":
+                bot_wins += 1; recent_outcomes.append(1)
+            elif status == "player_wins":
+                player_wins += 1; recent_outcomes.append(-1)
+            else:
+                draws += 1; recent_outcomes.append(0)
+
+        # 4. Train the network on the newly populated buffer
+        if len(buffer) >= args.batch_size:
+            # Scale updates by the number of workers (games played)
+            total_updates = args.updates_per_game * args.workers
+            for _ in range(total_updates):
+                s_b, pi_b, z_b = buffer.sample(args.batch_size)
+                tot, pol, val = _train_step(
+                    tf.convert_to_tensor(s_b),
+                    tf.convert_to_tensor(pi_b),
+                    tf.convert_to_tensor(z_b),
+                )
+                ep_total += float(tot); ep_pol += float(pol); ep_val += float(val)
+                n_updates += 1; grad_step += 1
+                
+            ep_total /= n_updates; ep_pol /= n_updates; ep_val /= n_updates
+
+        # 5. Logging and Save logic (Using total_episodes_played instead of ep)
+        with writer.as_default():
+            tf.summary.scalar("game/length",  ply, step=total_episodes_played)
+            tf.summary.scalar("game/avg_length_50", float(np.mean(recent_lengths)), step=total_episodes_played)
+            tf.summary.scalar("game/bot_wins",    bot_wins,    step=total_episodes_played)
+            tf.summary.scalar("game/player_wins", player_wins, step=total_episodes_played)
+            tf.summary.scalar("game/draws",       draws,       step=total_episodes_played)
+            
+            decisive = sum(1 for o in recent_outcomes if o != 0)
+            bot_w50  = sum(1 for o in recent_outcomes if o == 1)
+            tf.summary.scalar("game/bot_win_rate_50",
+                              bot_w50 / decisive if decisive > 0 else 0.0, step=total_episodes_played)
+            tf.summary.scalar("game/decisive_rate_50",
+                              decisive / len(recent_outcomes), step=total_episodes_played)
+            tf.summary.scalar("buffer/size", len(buffer), step=total_episodes_played)
+            
+            if n_updates > 0:
+                tf.summary.scalar("loss/total",  ep_total, step=total_episodes_played)
+                tf.summary.scalar("loss/policy", ep_pol,   step=total_episodes_played)
+                tf.summary.scalar("loss/value",  ep_val,   step=total_episodes_played)
+                tf.summary.scalar("training/grad_steps", grad_step, step=total_episodes_played)
+
+        # Save trigger (adjusted to trigger cleanly based on episodes processed)
+        if total_episodes_played % args.save_every < args.workers or total_episodes_played >= args.save_every:
+            _atomic_save(model, args.model_dir)
+            try: buffer.save(buffer_path)
+            except Exception as e: print(f"[az] Buffer save failed: {e}")
+            dt = time.time() - t0
+            print(f"[az] eps={total_episodes_played} ply={np.mean(recent_lengths):.1f} buf={len(buffer)} "
+                  f"bot={bot_wins} player={player_wins} draws={draws} "
+                  f"loss={ep_total:.3f} (p={ep_pol:.3f} v={ep_val:.3f}) "
+                  f"dt={dt:.1f}s")
+
+    _atomic_save(model, args.model_dir)
+    try: buffer.save(buffer_path)
+    except Exception: pass
+    writer.close()
+    print(f"[az] Final save -> {args.model_dir}")
+
+
+if __name__ == "__main__":
+    # [NEW] CRITICAL for TensorFlow + Multiprocessing on Linux/Ubuntu
+    mp.set_start_method('spawn', force=True)
+    main()
