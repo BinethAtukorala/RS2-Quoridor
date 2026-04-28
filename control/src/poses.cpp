@@ -89,17 +89,17 @@ public:
 
         std::vector<Position> positions = loadPoses(POSES_FILE, logger);
         if (positions.size() < 2) {
-            RCLCPP_ERROR(logger, "Need at least 2 positions — aborting");
+            RCLCPP_ERROR(logger, "Need at least 2 positions, aborting");
             return;
         }
 
         const std::size_t num_moves = positions.size() - 1;
-        RCLCPP_INFO(logger, "%zu positions loaded → %zu moves to execute",
+        RCLCPP_INFO(logger, "%zu positions loaded. %zu moves to execute",
                     positions.size(), num_moves);
 
         RCLCPP_INFO(logger, "Waiting for /quoridor/bot_execute ...");
         if (!client_->wait_for_action_server(std::chrono::seconds(30))) {
-            RCLCPP_ERROR(logger, "Action server not available after 30 s — aborting");
+            RCLCPP_ERROR(logger, "Action server os not available after 30 seconds. Aborting");
             return;
         }
 
@@ -115,14 +115,14 @@ public:
                         end.x,   end.y,   end.z);
 
             if (!sendAndWait(makeGoal(start, end), i + 1)) {
-                RCLCPP_ERROR(logger, "Move %zu FAILED — stopping", i + 1);
+                RCLCPP_ERROR(logger, "Move %zu FAILED - stopping", i + 1);
                 return;
             }
 
-            RCLCPP_INFO(logger, "Move %zu complete ✓", i + 1);
+            RCLCPP_INFO(logger, "Move %zu complete", i + 1);
         }
 
-        RCLCPP_INFO(logger, "All %zu moves completed successfully ✓", num_moves);
+        RCLCPP_INFO(logger, "All %zu moves completed successfully", num_moves);
     }
 
 private:
@@ -150,19 +150,19 @@ private:
             {
                 switch (wr.code) {
                     case rclcpp_action::ResultCode::SUCCEEDED:
-                        RCLCPP_INFO(get_logger(), "  [move %zu] SUCCEEDED", idx);
+                        RCLCPP_INFO(get_logger(), "  [Move %zu] SUCCEEDED", idx);
                         result_promise.set_value(wr.result->result);
                         break;
                     case rclcpp_action::ResultCode::ABORTED:
-                        RCLCPP_ERROR(get_logger(), "  [move %zu] ABORTED", idx);
+                        RCLCPP_ERROR(get_logger(), "  [Move %zu] ABORTED", idx);
                         result_promise.set_value(false);
                         break;
                     case rclcpp_action::ResultCode::CANCELED:
-                        RCLCPP_WARN(get_logger(), "  [move %zu] CANCELED", idx);
+                        RCLCPP_WARN(get_logger(), "  [Move %zu] CANCELED", idx);
                         result_promise.set_value(false);
                         break;
                     default:
-                        RCLCPP_ERROR(get_logger(), "  [move %zu] unknown result", idx);
+                        RCLCPP_ERROR(get_logger(), "  [Move %zu] unknown result", idx);
                         result_promise.set_value(false);
                         break;
                 }
@@ -173,20 +173,20 @@ private:
                 shared_from_this(), gh_future, std::chrono::seconds(10))
             != rclcpp::FutureReturnCode::SUCCESS)
         {
-            RCLCPP_ERROR(logger, "  [move %zu] timed out on goal acceptance", idx);
+            RCLCPP_ERROR(logger, "  [Move %zu] timed out on goal acceptance", idx);
             return false;
         }
 
         auto gh = gh_future.get();
         if (!gh) {
-            RCLCPP_ERROR(logger, "  [move %zu] goal REJECTED by server", idx);
+            RCLCPP_ERROR(logger, "  [Move %zu] goal REJECTED by server", idx);
             return false;
         }
 
         if (rclcpp::spin_until_future_complete(shared_from_this(), result_future)
             != rclcpp::FutureReturnCode::SUCCESS)
         {
-            RCLCPP_ERROR(logger, "  [move %zu] error waiting for result", idx);
+            RCLCPP_ERROR(logger, "  [Move %zu] error waiting for result", idx);
             return false;
         }
 
