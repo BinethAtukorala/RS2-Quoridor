@@ -11,6 +11,7 @@ setup(
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
         ('share/' + package_name + '/launch', ['launch/ai_move.launch.py']),
+        ('share/' + package_name + '/launch', ['launch/play_vs_ai.launch.py']),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
