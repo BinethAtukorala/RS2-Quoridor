@@ -643,7 +643,7 @@ def main(argv=None):
                    help="Search depth for the minimax teacher (3 matches the C++ default)")
     p.add_argument("--episodes", type=int, default=2000)
     p.add_argument("--batch-size", type=int, default=256)
-    p.add_argument("--replay-capacity", type=int, default=200_000)
+    p.add_argument("--replay-capacity", type=int, default=500_000)
     p.add_argument("--target-sync-every", type=int, default=500)
     p.add_argument("--save-every", type=int, default=100)
     p.add_argument("--lr", type=float, default=1e-3)

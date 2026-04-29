@@ -59,7 +59,8 @@ def play_game(
     bot_policy: Policy,
     player_policy: Policy,
     record_sides: tuple[str, ...] = ("bot",),
-    max_plies: int = 200,
+    # max_plies: int = 200,
+    max_plies: int = 75,
     board_n: int = 5,
     shaping_coef: float = 0.0,   # 0 disables PBRS; ~0.1 is a good default
     gamma: float = 0.99,         # discount used for the PBRS term
