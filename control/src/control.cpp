@@ -16,6 +16,7 @@
 #include <moveit_msgs/msg/robot_trajectory.hpp>
 #include <shape_msgs/msg/solid_primitive.hpp>
 #include <std_msgs/msg/string.hpp>
+#include <std_msgs/msg/int32_multi_array.hpp>
 #include <geometry_msgs/msg/pose.hpp>
 #include <tf2/LinearMath/Quaternion.h>
 #include <tf2/LinearMath/Vector3.h>
@@ -31,7 +32,8 @@ double deg2rad(double deg) { return deg * M_PI / 180.0; }
 // Perception / transit waypoint (radians)
 std::vector<double> PERCEPTION_WAYPOINT = {
     // -1.32227, -1.66748, -0.218161, -2.85343, 1.54598, 0.24451
-    -1.48368,-1.47431,-0.72157,-2.45629,1.60519,0.0981183
+    // -1.48368,-1.47431,-0.72157,-2.45629,1.60519,0.0981183
+    -1.47639,-1.42106,-0.761994,-2.46893,1.60461,0.105417
 };
 
 std::vector<double> MOVEMENT_WAYPOINT = {
@@ -40,36 +42,23 @@ std::vector<double> MOVEMENT_WAYPOINT = {
 
 // ------------------------------------------------------------------ //
 //  WALL PICKUP JOINT ANGLES
-//
-//  There are exactly 4 walls per game (shared between 'h' and 'v' types).
-//  Each time a wall move arrives (regardless of h or v), the next entry
-//  in this array is used as the robot's start pose for that move.
-//
-//  wall_pickup_index is incremented after every wall move, so:
-//    wall move 1 → WALL_PICKUP_JOINTS[0]
-//    wall move 2 → WALL_PICKUP_JOINTS[1]
-//    wall move 3 → WALL_PICKUP_JOINTS[2]
-//    wall move 4 → WALL_PICKUP_JOINTS[3]
-//
-//  TODO: drive the robot to each physical wall-stack position, read the
-//        joint angles (e.g. via `ros2 topic echo /joint_states`), and
-//        paste them below.  All six joints, in order.
 // ------------------------------------------------------------------ //
 const std::vector<std::vector<double>> WALL_PICKUP_JOINTS = {
-
     { -1.94215,-1.46597,-1.60545,-1.65821,1.58544,1.18939},
     { -1.91289,-1.68069,-1.42006,-1.67507,1.6095,1.19915},
     { -1.85773,-1.79817,-1.29396,-1.65578,1.59159,1.25853},
     { -1.86493,-1.97158,-1.07131,-1.69696,1.63539,1.21266},
-
 };
 
 // How far to retreat along tool axis for hover (metres)
 constexpr double HOVER_OFFSET_M = 0.05;
 
 // Ground plane height in metres (robot base frame Z)
-constexpr double TABLE_Z_HEIGHT  = 0.0;   // TODO: set to your table surface height
+constexpr double TABLE_Z_HEIGHT  = 0.0;
 constexpr double TABLE_THICKNESS = 0.05;
+
+// How many times to retry a failed gripper pickup before aborting
+constexpr int MAX_PICKUP_RETRIES = 3;
 
 // Joint constraints — restricts motion to above the board only
 struct JointBound { const char* name; double centre_deg; double tol_deg; };
@@ -78,12 +67,6 @@ constexpr JointBound JOINT_BOUNDS[] = {
     { "shoulder_lift_joint", -115.2, 43.1 },
     { "elbow_joint",         -38.3,  60.4 },
 };
-
-// constexpr JointBound JOINT_BOUNDS[] = {
-//     { "shoulder_pan_joint",  -60.3,  90.0 },
-//     { "shoulder_lift_joint", -115.2, 75.0 },
-//     { "elbow_joint",         -38.3,  90.0 },
-// };
 
 // ------------------------------------------------------------------ //
 //  FIXED END-EFFECTOR ORIENTATIONS
@@ -94,11 +77,9 @@ geometry_msgs::msg::Quaternion makeQuat(double x, double y, double z, double w) 
     return q;
 }
 
-// Pawn and horizontal wall share the same gripper orientation
 const geometry_msgs::msg::Quaternion ORI_PAWN_HWALL =
     makeQuat(1,0.-0.0000032,-0.0000076,0.0000159);
 
-// Vertical wall — gripper rotated 90° around tool Z relative to above
 const geometry_msgs::msg::Quaternion ORI_VWALL =
     makeQuat(0.7071095,0.7071041,-0.0000050,-0.0000064);
 
@@ -246,7 +227,6 @@ geometry_msgs::msg::Pose hoverPose(
         pose.orientation.x, pose.orientation.y,
         pose.orientation.z, pose.orientation.w);
 
-    // offset > 0 → away from board (hover up); offset < 0 → toward board (descend)
     tf2::Vector3 world_offset = tf2::quatRotate(q, tf2::Vector3(0.0, 0.0, -offset));
 
     geometry_msgs::msg::Pose h = pose;
@@ -268,9 +248,7 @@ geometry_msgs::msg::Pose withOrientation(
 }
 
 // ------------------------------------------------------------------ //
-//  FK HELPER — forward-kinematics a joint config to a Cartesian pose.
-//  Used to compute the Cartesian pose that corresponds to a wall pickup
-//  joint config, so we can chain it into a moveCartesianSequence call.
+//  FK HELPER
 // ------------------------------------------------------------------ //
 geometry_msgs::msg::Pose fkPose(
     moveit::planning_interface::MoveGroupInterface &move_group,
@@ -362,13 +340,6 @@ int main(int argc, char * argv[])
         RCLCPP_INFO(logger, "Workspace joint constraints set");
     }
 
-    // ================================================================ //                                                                                                                      
-    //  STARTUP — move to perception waypoint                                                                                                                                                   
-    // ================================================================ //                                                                                                                      
-    if (!moveToJoints(move_group, PERCEPTION_WAYPOINT, "startup_perception", logger)) {                                                                                                         
-    RCLCPP_ERROR(logger, "Failed to move to perception waypoint at startup");                                                                                                        
-    }    
-
     // ================================================================ //
     //  GRIPPER
     // ================================================================ //
@@ -376,18 +347,32 @@ int main(int argc, char * argv[])
         "/gripper/command",
         rclcpp::QoS(10).transient_local()
     );
-    std::atomic<bool> gripper_done{false};
+
+    // Stores the last status string received: "done", "success", "fail", "wrong"
+    std::atomic<bool>  gripper_done{false};
+    std::string        gripper_last_status;
+    std::mutex         gripper_status_mutex;
 
     auto gripper_sub = node->create_subscription<std_msgs::msg::String>(
         "/gripper/status", 10,
         [&](std_msgs::msg::String::SharedPtr msg) {
             if (msg->data == "done"  || msg->data == "success" ||
-                msg->data == "fail"  || msg->data == "wrong")
+                msg->data == "fail"  || msg->data == "wrong") {
+                {
+                    std::lock_guard<std::mutex> lock(gripper_status_mutex);
+                    gripper_last_status = msg->data;
+                }
                 gripper_done = true;
+            }
         });
 
-    auto publishGripperCommand = [&](const std::string &cmd) {
+    // Returns the status string so callers can distinguish success/fail/wrong.
+    auto publishGripperCommand = [&](const std::string &cmd) -> std::string {
         gripper_done = false;
+        {
+            std::lock_guard<std::mutex> lock(gripper_status_mutex);
+            gripper_last_status = "";
+        }
         std_msgs::msg::String m;
         m.data = cmd;
         gripper_pub->publish(m);
@@ -395,17 +380,86 @@ int main(int argc, char * argv[])
         rclcpp::Rate rate(20);
         while (!gripper_done && rclcpp::ok())
             rate.sleep();
+        std::lock_guard<std::mutex> lock(gripper_status_mutex);
+        return gripper_last_status;
     };
+
+    // ================================================================ //
+    //  BOARD DETECTION SUBSCRIBER
+    //  /perception/board_state  → std_msgs/Int32MultiArray
+    //  data[0] == 1 → board detected, data[0] == 0 → not detected
+    // ================================================================ //
+    std::atomic<int>  board_detected{-1};   // -1 = no message yet
+    std::mutex        board_mutex;
+
+    auto board_sub = node->create_subscription<std_msgs::msg::Int32MultiArray>(
+        "/perception/board_state", 10,
+        [&](std_msgs::msg::Int32MultiArray::SharedPtr msg) {
+            if (!msg->data.empty()) {
+                std::lock_guard<std::mutex> lock(board_mutex);
+                board_detected = msg->data[0];
+            }
+        });
+
+    // Helper: move to perception waypoint and wait until board is detected.
+    // Tries up to `max_attempts` times (each attempt = joint move + wait).
+    // Returns true if board is detected, false if all attempts fail.
+    auto ensureBoardDetected = [&](int max_attempts = 3) -> bool {
+        for (int attempt = 1; attempt <= max_attempts; ++attempt) {
+            RCLCPP_INFO(logger, "Board detection attempt %d/%d — moving to perception waypoint",
+                        attempt, max_attempts);
+
+            if (!moveToJoints(move_group, PERCEPTION_WAYPOINT,
+                              "perception_waypoint_detection", logger)) {
+                RCLCPP_ERROR(logger, "Failed to move to perception waypoint (attempt %d)", attempt);
+                continue;
+            }
+
+            // Reset and wait up to 3 seconds for a fresh board_state message.
+            {
+                std::lock_guard<std::mutex> lock(board_mutex);
+                board_detected = -1;
+            }
+
+            rclcpp::Rate wait_rate(20);
+            int ticks = 0;
+            constexpr int MAX_TICKS = 60;   // 3 seconds at 20 Hz
+
+            while (rclcpp::ok() && ticks < MAX_TICKS) {
+                {
+                    std::lock_guard<std::mutex> lock(board_mutex);
+                    if (board_detected != -1) break;
+                }
+                wait_rate.sleep();
+                ++ticks;
+            }
+
+            {
+                std::lock_guard<std::mutex> lock(board_mutex);
+                if (board_detected == 1) {
+                    RCLCPP_INFO(logger, "Board detected on attempt %d", attempt);
+                    return true;
+                }
+                RCLCPP_WARN(logger, "Board NOT detected on attempt %d (value=%d)",
+                            attempt, board_detected.load());
+            }
+        }
+        RCLCPP_ERROR(logger, "Board detection failed after %d attempts", max_attempts);
+        return false;
+    };
+
+    // ================================================================ //                                                                                                                      
+    //  STARTUP — move to perception waypoint and verify board detection
+    // ================================================================ //                                                                                                                      
+    if (!ensureBoardDetected()) {
+        RCLCPP_ERROR(logger, "WARNING: Board not detected at startup — continuing anyway");
+    }
 
     // ================================================================ //
     //  ACTION SERVER
     // ================================================================ //
     bool first_move = true;
-
-    // Shared wall counter — incremented for every 'h' or 'v' move.
-    // Indexes into WALL_PICKUP_JOINTS[0..3].
-    // Game logic guarantees at most 4 wall moves per game.
-    int wall_pickup_index = 0;
+    int  wall_pickup_index = 0;
 
     using BotMove    = quoridor_interfaces::action::BotMove;
     using GoalHandle = rclcpp_action::ServerGoalHandle<BotMove>;
@@ -429,12 +483,6 @@ int main(int argc, char * argv[])
             RCLCPP_ERROR(logger, "BotMove ABORTED: %s", reason.c_str());
         };
 
-        // ---------------------------------------------------------- //
-        //  Determine piece type
-        //  'p' = pawn   → use goal start + goal end
-        //  'h' = horizontal wall  \  use WALL_PICKUP_JOINTS[wall_pickup_index]
-        //  'v' = vertical wall    /  for start; use goal end
-        // ---------------------------------------------------------- //
         const std::string &pt = goal->piece_type;
         if (pt != "p" && pt != "h" && pt != "v") {
             return abort("Invalid piece_type '" + pt + "' — must be 'p', 'h', or 'v'");
@@ -445,18 +493,10 @@ int main(int argc, char * argv[])
         const bool is_vwall = (pt == "v");
         const bool is_wall  = is_hwall || is_vwall;
 
-        // Pick fixed orientation based on piece type.
-        // For vertical walls: pickup uses ORI_PAWN_HWALL (horizontal) so the
-        // gripper matches the wall lying flat on the stack, then the end pose
-        // uses ORI_VWALL so it is placed upright/vertical on the board.
-        const auto &ori_pickup = ORI_PAWN_HWALL;                      // always pick up horizontal
+        const auto &ori_pickup = ORI_PAWN_HWALL;
         const auto &ori_place  = is_vwall ? ORI_VWALL : ORI_PAWN_HWALL;
-        // Alias used by the shared pawn/wall pickup path below
-        const auto &ori = ori_pickup;
+        const auto &ori        = ori_pickup;
 
-        // ---------------------------------------------------------- //
-        //  Validate wall counter before proceeding
-        // ---------------------------------------------------------- //
         if (is_wall) {
             if (wall_pickup_index >= static_cast<int>(WALL_PICKUP_JOINTS.size())) {
                 return abort("Wall pickup index out of bounds — more than 4 wall moves received");
@@ -468,15 +508,6 @@ int main(int argc, char * argv[])
             RCLCPP_INFO(logger, "BotMove — piece: PAWN");
         }
 
-        // ---------------------------------------------------------- //
-        //  Resolve start pose
-        //
-        //  PAWN  → use goal->start directly (lock orientation)
-        //  WALL  → move to WALL_PICKUP_JOINTS[wall_pickup_index] via joint
-        //          move, then compute the FK pose of that config to use as
-        //          the Cartesian "current position" for the pickup sequence.
-        //          The goal->start field is ignored for wall moves.
-        // ---------------------------------------------------------- //
         geometry_msgs::msg::Pose start_fixed;
         geometry_msgs::msg::Pose start_hover;
 
@@ -484,31 +515,28 @@ int main(int argc, char * argv[])
             start_fixed = withOrientation(goal->start, ori);
             start_hover = hoverPose(start_fixed);
         }
-        // For walls, start_fixed / start_hover are computed after the joint
-        // move in STEP 2W below (we need the robot at the joint config first).
 
-        // Lock end pose orientation — vertical walls place with ORI_VWALL,
-        // all other pieces (pawn, hwall) place with ORI_PAWN_HWALL.
         geometry_msgs::msg::Pose end_fixed = withOrientation(goal->end, ori_place);
         geometry_msgs::msg::Pose end_hover = hoverPose(end_fixed);
 
-        // Gripper commands based on piece type
         const std::string cmd_pickup = is_pawn  ? "pickup_pawn" : "pickup_wall";
         const std::string cmd_drop   = is_pawn  ? "drop_pawn"   : "drop_wall";
 
         // ---------------------------------------------------------- //
         //  STEP 1 — Perception waypoint (first move only)
+        //  Also verify board is detected before proceeding.
         // ---------------------------------------------------------- //
         if (first_move) {
-            send_feedback(gh, 0.05f, "Initial perception waypoint");
-            if (!moveToJoints(move_group, PERCEPTION_WAYPOINT, "perception_init", logger))
-                return abort("Failed at initial perception waypoint");
+            send_feedback(gh, 0.05f, "Initial perception waypoint + board detection");
+            if (!ensureBoardDetected()) {
+                RCLCPP_WARN(logger, "Board not confirmed at first move — proceeding anyway");
+            }
             publishGripperCommand("open");
             first_move = false;
         }
 
         // ---------------------------------------------------------- //
-        //  STEP 2P (pawn) — Free-space / Cartesian move to start hover
+        //  STEP 2P (pawn) — Move to start hover
         // ---------------------------------------------------------- //
         if (is_pawn) {
             send_feedback(gh, 0.18f, "Moving to start hover (pawn)");
@@ -519,19 +547,7 @@ int main(int argc, char * argv[])
         }
 
         // ---------------------------------------------------------- //
-        //  STEP 2W (wall) — Joint move to wall pickup slot, then compute
-        //  the FK Cartesian pose so we can treat it exactly like a pawn
-        //  start hover from here onward.
-        //
-        //  We go joint-space to the pickup slot because:
-        //    a) The slot may be far from the current position — Cartesian
-        //       would likely fail across that range.
-        //    b) We don't need a straight-line path to get to the slot;
-        //       we just need to arrive at a defined, repeatable config.
-        //
-        //  After the joint move we derive the Cartesian hover + contact
-        //  poses from FK so the rest of the pickup sequence is identical
-        //  to the pawn path.
+        //  STEP 2W (wall) — Joint move to wall pickup slot
         // ---------------------------------------------------------- //
         if (is_wall) {
             const auto &pickup_joints = WALL_PICKUP_JOINTS[wall_pickup_index];
@@ -539,14 +555,6 @@ int main(int argc, char * argv[])
                 std::string("Moving to wall pickup slot ") +
                 std::to_string(wall_pickup_index + 1));
 
-            // Joint angles are recorded at HOVER height (gripper 5 cm above
-            // the wall). The joint move lands the robot directly at hover —
-            // no free-space approach needed.
-            //
-            // FK of the joint config → start_hover in Cartesian space.
-            // Negative hoverPose offset → start_fixed 5 cm below (contact).
-            //
-            // Flow:  joint_move → [AT hover] → descend → contact → pick → ascend
             if (!moveToJoints(move_group, pickup_joints, "wall_pickup_hover", logger))
                 return abort("Failed moving to wall pickup hover config");
 
@@ -555,25 +563,70 @@ int main(int argc, char * argv[])
         }
 
         // ---------------------------------------------------------- //
-        //  STEP 3 — Cartesian descent: hover → contact (start)
+        //  STEPS 3–5 — Pickup with retry loop
         //
-        //  At this point both pawn and wall have the robot at start_hover,
-        //  so the descent is identical for both piece types.
+        //  On a failed pickup (wrong object or nothing grasped):
+        //    1. Ascend back to start_hover  (Cartesian)
+        //    2. Open gripper
+        //    3. Descend again to start_fixed
+        //    4. Retry gripper close
+        //
+        //  For wall moves, the hover pose is already set above so retries
+        //  simply re-descend from the same hover; no joint move needed.
         // ---------------------------------------------------------- //
-        send_feedback(gh, 0.27f, "Cartesian hover → contact (start)");
-        if (!moveCartesianSequence(move_group,
-                { start_hover, start_fixed },
-                "hover_to_start", logger))
-            return abort("Failed Cartesian hover→contact at start");
+        bool pickup_ok = false;
+
+        for (int attempt = 1; attempt <= MAX_PICKUP_RETRIES; ++attempt) {
+            if (attempt > 1) {
+                RCLCPP_WARN(logger, "Pickup retry %d/%d", attempt, MAX_PICKUP_RETRIES);
+            }
+
+            // Step 3 — Descend: hover → contact
+            send_feedback(gh, 0.27f,
+                          std::string("Cartesian hover → contact (attempt ") +
+                          std::to_string(attempt) + ")");
+            if (!moveCartesianSequence(move_group,
+                    { start_hover, start_fixed },
+                    "hover_to_start", logger))
+                return abort("Failed Cartesian hover→contact at start");
+
+            // Step 4 — Close gripper
+            send_feedback(gh, 0.36f,
+                          std::string("Picking ") + (is_pawn ? "pawn" : "wall") +
+                          " (attempt " + std::to_string(attempt) + ")");
+            std::string pickup_status = publishGripperCommand(cmd_pickup);
+
+            if (pickup_status == "success") {
+                // Good grip — proceed
+                pickup_ok = true;
+                break;
+            }
+
+            // Bad grip — ascend, open, and retry (or abort if out of attempts)
+            RCLCPP_WARN(logger, "Pickup attempt %d failed (status: %s) — ascending and reopening",
+                        attempt, pickup_status.c_str());
+
+            // Ascend back to hover
+            if (!moveCartesianSequence(move_group,
+                    { start_fixed, start_hover },
+                    "retry_ascend", logger)) {
+                return abort("Failed to ascend after pickup failure");
+            }
+
+            // Open gripper
+            publishGripperCommand("open");
+
+            if (attempt == MAX_PICKUP_RETRIES) {
+                return abort("Pickup failed after " + std::to_string(MAX_PICKUP_RETRIES) + " attempts");
+            }
+
+            // Small pause before next attempt
+            rclcpp::sleep_for(std::chrono::milliseconds(300));
+        }
 
         // ---------------------------------------------------------- //
-        //  STEP 4 — Close gripper
-        // ---------------------------------------------------------- //
-        send_feedback(gh, 0.36f, std::string("Picking ") + (is_pawn ? "pawn" : "wall"));
-        publishGripperCommand(cmd_pickup);
-
-        // ---------------------------------------------------------- //
-        //  STEP 5 — Cartesian ascent: contact → hover (start)
+        //  STEP 5 — Ascend: contact → hover (start)
+        //  (only reached on success — retries ascend inside the loop)
         // ---------------------------------------------------------- //
         send_feedback(gh, 0.45f, "Cartesian contact → hover (start)");
         if (!moveCartesianSequence(move_group,
@@ -582,18 +635,8 @@ int main(int argc, char * argv[])
             return abort("Failed Cartesian contact→hover at start");
 
         // ---------------------------------------------------------- //
-        //  STEP 6 — Cartesian move to transit waypoint
+        //  STEP 6 — Transit waypoint
         // ---------------------------------------------------------- //
-        // send_feedback(gh, 0.54f, "Moving to transit waypoint");
-        // {
-        //     geometry_msgs::msg::Pose transit_pose = fkPose(move_group, MOVEMENT_WAYPOINT);
-        //     move_group.setJointValueTarget(MOVEMENT_WAYPOINT);
-        //     if (!moveCartesianSequence(move_group,
-        //             { move_group.getCurrentPose().pose, transit_pose },
-        //             "transit_waypoint", logger))
-        //         return abort("Failed at transit waypoint");
-        // }
-
         send_feedback(gh, 0.54f, "Moving to transit waypoint");
         {
             geometry_msgs::msg::Pose transit_pose = fkPose(move_group, MOVEMENT_WAYPOINT);
@@ -630,7 +673,7 @@ int main(int argc, char * argv[])
         publishGripperCommand(cmd_drop);
 
         // ---------------------------------------------------------- //
-        //  STEP 10 — Cartesian ascent: contact → hover (end)
+        //  STEP 10 — Ascent: contact → hover (end)
         // ---------------------------------------------------------- //
         send_feedback(gh, 0.90f, "Cartesian contact → hover (end)");
         if (!moveCartesianSequence(move_group,
@@ -639,31 +682,19 @@ int main(int argc, char * argv[])
             return abort("Failed Cartesian contact→hover at end");
 
         // ---------------------------------------------------------- //
-        //  STEP 11 — Return to perception waypoint via transit
+        //  STEP 11 — Return to perception waypoint + verify board detection
         // ---------------------------------------------------------- //
-        // send_feedback(gh, 1.00f, "Returning to perception waypoint");
-        // {
-        //     geometry_msgs::msg::Pose return_pose = fkPose(move_group, MOVEMENT_WAYPOINT);
-        //     move_group.setJointValueTarget(MOVEMENT_WAYPOINT);
-        //     if (!moveCartesianSequence(move_group,
-        //             { move_group.getCurrentPose().pose, return_pose },
-        //             "perception_return", logger))
-        //         return abort("Failed returning to perception waypoint");
-        // }
         send_feedback(gh, 1.00f, "Returning to perception waypoint");
         {
-            geometry_msgs::msg::Pose return_pose = fkPose(move_group, PERCEPTION_WAYPOINT);
-            return_pose.orientation = ORI_VWALL;
-            move_group.setJointValueTarget(PERCEPTION_WAYPOINT);
-            if (!moveCartesianSequence(move_group,
-                    { move_group.getCurrentPose().pose, return_pose },
-                    "perception_return", logger))
-                return abort("Failed returning to perception waypoint");
+            // Use ensureBoardDetected so the return also corrects any
+            // perception misalignment before the next move is planned.
+            if (!ensureBoardDetected()) {
+                RCLCPP_WARN(logger, "Board not confirmed after returning — continuing anyway");
+            }
         }
 
         // ---------------------------------------------------------- //
         //  Advance wall counter AFTER a successful wall move.
-        //  Only incremented on success so a retry uses the same slot.
         // ---------------------------------------------------------- //
         if (is_wall) {
             ++wall_pickup_index;
