@@ -22,6 +22,7 @@ setup(
         'console_scripts': [
             'ai_move_node = quoridor_alphazero.ai_move_node:main',
             'train = quoridor_alphazero.train:main',
+            'online_train = quoridor_alphazero.online_train:main',
         ],
     },
 )

@@ -60,13 +60,20 @@ def _make_evaluator(model: tf.keras.Model):
     return evaluator
 
 
-# [NEW] Standalone worker function for Multiprocessing
-def self_play_worker(worker_args):
-    """Isolated worker process for parallel self-play."""
-    (weights, filters, blocks, simulations, c_puct, 
-     alpha, eps, temp_moves, max_plies) = worker_args
+# Persistent worker state — populated once by the Pool initializer so
+# TensorFlow + the model + MCTS only get built one time per worker process.
+_WORKER = {}
 
-    # 1. Re-import locally to ensure safe process separation
+
+def _worker_init(filters, blocks, simulations, c_puct,
+                 alpha, eps, temp_moves, max_plies):
+    """Pool initializer: import TF, build the model + MCTS once per worker."""
+    import os
+    os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "2")
+    # Workers do CPU-only self-play; hide GPUs so they don't fight the trainer
+    # for VRAM.
+    os.environ.setdefault("CUDA_VISIBLE_DEVICES", "-1")
+
     import tensorflow as tf
     try:
         from .mcts import MCTS
@@ -77,16 +84,8 @@ def self_play_worker(worker_args):
         from network import build_az_net
         from self_play import play_game
 
-    # 2. Prevent the worker from hogging the entire GPU VRAM
-    for g in tf.config.list_physical_devices("GPU"):
-        try: tf.config.experimental.set_memory_growth(g, True)
-        except Exception: pass
-
-    # 3. Rebuild model and load the latest weights from the master process
     model = build_az_net(filters=filters, n_blocks=blocks)
-    model.set_weights(weights)
 
-    # 4. Build evaluator and MCTS
     @tf.function(reduce_retracing=True)
     def _forward(x):
         logits, value = model(x, training=False)
@@ -99,8 +98,50 @@ def self_play_worker(worker_args):
     mcts = MCTS(evaluator, n_simulations=simulations, c_puct=c_puct,
                 dirichlet_alpha=alpha, dirichlet_eps=eps)
 
-    # 5. Play one game and return the results
-    return play_game(mcts, max_plies=max_plies, temp_moves=temp_moves)
+    _WORKER.update(
+        model=model,
+        mcts=mcts,
+        play_game=play_game,
+        temp_moves=temp_moves,
+        max_plies=max_plies,
+        weights_version=-1,
+    )
+
+
+def _worker_set_weights(payload):
+    """Update the persistent worker model in-place. Returns the worker pid."""
+    import os
+    version, weights = payload
+    if version != _WORKER["weights_version"]:
+        _WORKER["model"].set_weights(weights)
+        _WORKER["weights_version"] = version
+    return os.getpid()
+
+
+def _worker_play(_):
+    """Play one self-play game with the cached model + MCTS."""
+    return _WORKER["play_game"](
+        _WORKER["mcts"],
+        max_plies=_WORKER["max_plies"],
+        temp_moves=_WORKER["temp_moves"],
+    )
+
+
+def _broadcast_weights(pool, n_workers, version, weights):
+    """Push `weights` into every worker in the Pool.
+
+    `pool.map` doesn't guarantee a 1-task-per-worker fanout, so we submit
+    apply_async tasks until every worker pid has acknowledged the new version.
+    """
+    payload = (version, weights)
+    seen = set()
+    attempts = 0
+    while len(seen) < n_workers and attempts < 16:
+        attempts += 1
+        pending = [pool.apply_async(_worker_set_weights, (payload,))
+                   for _ in range(n_workers - len(seen))]
+        for r in pending:
+            seen.add(r.get())
 
 
 def main(argv=None):
@@ -187,18 +228,20 @@ def main(argv=None):
 
     print(f"[az] Starting Pool with {args.workers} workers...")
 
-    # [MODIFIED] The main loop now iterates over batches, not individual games
-    for batch in range(1, total_batches + 1):
-        
-        # 1. Package the current weights and parameters for the workers
-        current_weights = model.get_weights()
-        worker_args = (current_weights, args.filters, args.blocks,
-                       args.simulations, args.c_puct, args.dirichlet_alpha, 
-                       args.dirichlet_eps, args.temp_moves, args.max_plies)
+    # Spin up the Pool once. The initializer imports TF and builds the model
+    # + MCTS in each worker so we don't pay that cost every batch.
+    init_args = (args.filters, args.blocks, args.simulations, args.c_puct,
+                 args.dirichlet_alpha, args.dirichlet_eps,
+                 args.temp_moves, args.max_plies)
 
-        # 2. Launch the parallel games
-        with mp.Pool(args.workers) as pool:
-            results = pool.map(self_play_worker, [worker_args] * args.workers)
+    with mp.Pool(args.workers, initializer=_worker_init, initargs=init_args) as pool:
+     for batch in range(1, total_batches + 1):
+
+        # 1. Push the latest weights into every worker (in-place update).
+        _broadcast_weights(pool, args.workers, batch, model.get_weights())
+
+        # 2. Launch the parallel games on the persistent pool.
+        results = pool.map(_worker_play, [None] * args.workers)
 
         ep_total = ep_pol = ep_val = 0.0
         n_updates = 0

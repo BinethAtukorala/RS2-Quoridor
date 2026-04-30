@@ -144,18 +144,17 @@ python3 -m quoridor_alphazero.train \
 ### Train (resume)
 Auto-loads weights, replay buffer, and switches to `--lr-resume` (2e-4):
 ```bash
-python3 -m quoridor_alphazero.train --resume --episodes 5000 \
-    --model-dir /rs2_ws/quoridor_az_models/run1 \
-    --tb-log-dir /rs2_ws/quoridor_az_tensorboard/run1
+python3 -m quoridor_alphazero.train --resume --episodes 5000 --model-dir /rs2_ws/quoridor_az_models/run1 --tb-log-dir /rs2_ws/quoridor_az_tensorboard/run1_2 --batch-size 1024 --lr-resume 8e-4
+
+python3 -m quoridor_alphazero.train --resume --episodes 5000 --model-dir /rs2_ws/quoridor_az_models/run1 --tb-log-dir /rs2_ws/quoridor_az_tensorboard/run1_3 --batch-size 1024 --lr-resume 8e-4 --workers 12
+
 ```
 
 ### Play against it
 You play through the web UI, the AZ engine plays bot. Inference can use
 much heavier search than training — same weights, no retraining:
 ```bash
-ros2 launch quoridor_alphazero play_vs_az.launch.py \
-    model_dir:=/rs2_ws/quoridor_az_models/run1 \
-    simulations:=400
+ros2 launch quoridor_alphazero play_vs_az.launch.py model_dir:=/rs2_ws/quoridor_az_models/run1 simulations:=400
 ```
 
 ### Recover from a bad checkpoint
