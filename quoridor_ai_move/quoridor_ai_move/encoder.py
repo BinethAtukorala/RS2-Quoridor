@@ -105,7 +105,8 @@ def encode_state(board: QuoridorBoard, agent_side: str) -> np.ndarray:
     # Scalar features broadcast to full planes so a conv net can consume them.
     t[:, :, 4] = my_walls / float(MAX_WALLS)
     t[:, :, 5] = opp_walls / float(MAX_WALLS)
-    t[:, :, 6] = 1.0 if board.current_turn == "bot" else 0.0
+    # t[:, :, 6] = 1.0 if board.current_turn == "bot" else 0.0
+    t[:, :, 6] = 1.0
 
     return t
 

@@ -665,7 +665,7 @@ def main(argv=None):
     p.add_argument("--model-dir", type=str, default=str(Path.cwd() / "quoridor_models" / "latest"))
     p.add_argument("--resume", action="store_true")
     p.add_argument("--batch-size", type=int, default=256)
-    p.add_argument("--replay-capacity", type=int, default=500_000)
+    p.add_argument("--replay-capacity", type=int, default=200_000)
     p.add_argument("--train-every", type=int, default=1)
     p.add_argument("--target-sync-every", type=int, default=500)
     p.add_argument("--save-every", type=int, default=100)
