@@ -43,12 +43,32 @@ std::vector<double> MOVEMENT_WAYPOINT = {
 // ------------------------------------------------------------------ //
 //  WALL PICKUP JOINT ANGLES
 // ------------------------------------------------------------------ //
+// const std::vector<std::vector<double>> WALL_PICKUP_JOINTS = {
+//     { -1.94215,-1.46597,-1.60545,-1.65821,1.58544,1.18939},
+//     { -1.91289,-1.68069,-1.42006,-1.67507,1.6095,1.19915},
+//     { -1.85773,-1.79817,-1.29396,-1.65578,1.59159,1.25853},
+//     { -1.86493,-1.97158,-1.07131,-1.69696,1.63539,1.21266},
+// };
+
+// const std::vector<std::vector<double>> WALL_PICKUP_JOINTS = {
+//     {-1.87508,-1.53884,-1.77275,-1.37098,1.55933,1.29476},
+//     {-1.83036,-1.68644,-1.62077,-1.376,1.55834,1.33934},
+//     {-1.7977,-1.85196,-1.41792,-1.41378,1.55768,1.37177},
+//     {-1.77418,-2.01326,-1.19889,-1.47193,1.55733,1.3951},
+// };
+
 const std::vector<std::vector<double>> WALL_PICKUP_JOINTS = {
-    { -1.94215,-1.46597,-1.60545,-1.65821,1.58544,1.18939},
-    { -1.91289,-1.68069,-1.42006,-1.67507,1.6095,1.19915},
-    { -1.85773,-1.79817,-1.29396,-1.65578,1.59159,1.25853},
-    { -1.86493,-1.97158,-1.07131,-1.69696,1.63539,1.21266},
+    {-1.87508,-1.53884,-1.77275,-1.37098,1.55933,1.29476},
+    {-1.83036,-1.68644,-1.62077,-1.376,1.55834,1.33934},
+    {-1.7977,-1.85196,-1.41792,-1.41378,1.55768,1.37177},
+    {-1.77418,-2.01326,-1.19889,-1.47193,1.55733,1.3951},
 };
+
+0.217369,0.242935,0.0518124,0.999771,-0.014201,0.00975109,-0.0126598
+0.215782,0.286976,0.0511738,0.999774,-0.0141265,0.00957366,-0.0126424
+0.21561,0.333287,0.0510665,0.999777,-0.0140385,0.00941421,-0.0126666
+0.215466,0.375247,0.0493735,0.99978,-0.0139461,0.00927813,-0.0126231
+
 
 // How far to retreat along tool axis for hover (metres)
 constexpr double HOVER_OFFSET_M = 0.05;
@@ -397,7 +417,7 @@ int main(int argc, char * argv[])
         [&](std_msgs::msg::Int32MultiArray::SharedPtr msg) {
             if (!msg->data.empty()) {
                 std::lock_guard<std::mutex> lock(board_mutex);
-                board_detected = msg->data[0];
+                board_detected = msg->data[0] >= 0;
             }
         });
 
@@ -436,7 +456,7 @@ int main(int argc, char * argv[])
 
             {
                 std::lock_guard<std::mutex> lock(board_mutex);
-                if (board_detected == 1) {
+                if (board_detected) {
                     RCLCPP_INFO(logger, "Board detected on attempt %d", attempt);
                     return true;
                 }
@@ -681,18 +701,75 @@ int main(int argc, char * argv[])
                 "end_to_hover", logger))
             return abort("Failed Cartesian contact→hover at end");
 
-        // ---------------------------------------------------------- //
+        // // ---------------------------------------------------------- //
+        // //  STEP 11 — Return to perception waypoint + verify board detection
+        // // ---------------------------------------------------------- //
+        // send_feedback(gh, 1.00f, "Returning to perception waypoint");
+        // {
+        //     // Use ensureBoardDetected so the return also corrects any
+        //     // perception misalignment before the next move is planned.
+        //     if (!ensureBoardDetected()) {
+        //         RCLCPP_WARN(logger, "Board not confirmed after returning — continuing anyway");
+        //     }
+        // }
+
+   // ---------------------------------------------------------- //
         //  STEP 11 — Return to perception waypoint + verify board detection
+        //  Phase 1: Cartesian transit to avoid weird rotations, then
+        //           joint-space snap to exact perception angles.
+        //  Phase 2: if board not detected, snap to joints again.
         // ---------------------------------------------------------- //
         send_feedback(gh, 1.00f, "Returning to perception waypoint");
         {
-            // Use ensureBoardDetected so the return also corrects any
-            // perception misalignment before the next move is planned.
-            if (!ensureBoardDetected()) {
-                RCLCPP_WARN(logger, "Board not confirmed after returning — continuing anyway");
+            // Phase 1 — Cartesian transit to perception vicinity, then snap to exact joints.
+            {
+                geometry_msgs::msg::Pose return_pose = fkPose(move_group, PERCEPTION_WAYPOINT);
+                return_pose.orientation = ORI_VWALL;
+                move_group.setJointValueTarget(PERCEPTION_WAYPOINT);
+                if (!moveCartesianSequence(move_group,
+                        { move_group.getCurrentPose().pose, return_pose },
+                        "perception_waypoint_return_transit", logger)) {
+                    RCLCPP_WARN(logger, "Cartesian transit to perception waypoint failed — continuing anyway");
+                }
+            }
+            // Snap to exact joint angles so wrist settles correctly.
+            if (!moveToJoints(move_group, PERCEPTION_WAYPOINT,
+                              "perception_waypoint_return_snap", logger)) {
+                RCLCPP_WARN(logger, "Joint snap to perception waypoint failed — continuing anyway");
+            }
+
+            // Phase 2 — check board; if not detected, snap to joints once more.
+            {
+                std::lock_guard<std::mutex> lock(board_mutex);
+                board_detected = -1;
+            }
+            rclcpp::Rate wait_rate(20);
+            int ticks = 0;
+            constexpr int MAX_TICKS = 60;   // 3 seconds at 20 Hz
+            while (rclcpp::ok() && ticks < MAX_TICKS) {
+                {
+                    std::lock_guard<std::mutex> lock(board_mutex);
+                    if (board_detected != -1) break;
+                }
+                wait_rate.sleep();
+                ++ticks;
+            }
+
+            {
+                std::lock_guard<std::mutex> lock(board_mutex);
+                if (board_detected != 1) {
+                    RCLCPP_WARN(logger, "Board not detected after return (value=%d) — retrying joint snap",
+                                board_detected.load());
+                    // Joint-space retry — re-commands exact angles to correct any remaining drift.
+                    if (!moveToJoints(move_group, PERCEPTION_WAYPOINT,
+                                      "perception_waypoint_retry_snap", logger)) {
+                        RCLCPP_WARN(logger, "Retry joint snap to perception waypoint also failed — continuing anyway");
+                    }
+                } else {
+                    RCLCPP_INFO(logger, "Board confirmed after returning to perception waypoint");
+                }
             }
         }
-
         // ---------------------------------------------------------- //
         //  Advance wall counter AFTER a successful wall move.
         // ---------------------------------------------------------- //

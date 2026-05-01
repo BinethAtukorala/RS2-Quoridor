@@ -36,9 +36,9 @@ class PerceptionNode(Node):
         self.latest_depth = None
 
         # --- Config & Files ---
-        self.pawn_coords_file = os.path.expanduser("~/rs2_ws/src/perception/pawn_coords.txt")
-        self.wall_coords_file = os.path.expanduser("~/rs2_ws/src/perception/wall_coords.txt")
-        self.intrinsics_file = os.path.expanduser("~/rs2_ws/src/perception/camera_intrinsics.json")
+        self.pawn_coords_file = os.path.expanduser("/rs2_ws/src/perception/pawn_coords.txt")
+        self.wall_coords_file = os.path.expanduser("/rs2_ws/src/perception/wall_coords.txt")
+        self.intrinsics_file = os.path.expanduser("/rs2_ws/src/perception/camera_intrinsics.json")
 
         self.pawn_lookup = {}
         self.wall_lookup = {}
@@ -88,7 +88,11 @@ class PerceptionNode(Node):
         if not contours: return None
         board_cnts = [cnt for cnt in contours if 20000 < cv2.contourArea(cnt) < (img.shape[0]*img.shape[1])]
         if not board_cnts: return None
-        pts = cv2.approxPolyDP(max(board_cnts, key=cv2.contourArea), 0.02 * cv2.arcLength(max(board_cnts, key=cv2.contourArea), True), True).reshape(4, 2)
+        best = max(board_cnts, key=cv2.contourArea)
+        approx = cv2.approxPolyDP(best, 0.02 * cv2.arcLength(best, True), True)
+        if len(approx) != 4:
+            return None
+        pts = approx.reshape(4, 2)
         rect = np.zeros((4, 2), dtype=np.float32)
         s, d = pts.sum(axis=1), np.diff(pts, axis=1)
         rect[0], rect[2], rect[1], rect[3] = pts[np.argmin(s)], pts[np.argmax(s)], pts[np.argmin(d)], pts[np.argmax(d)]

@@ -46,7 +46,7 @@ class CameraNode(Node):
 
         # Path to save intrinsics
         # self.intrinsics_file = os.path.expanduser("/ros2_ws/src/perception/camera_intrinsics.json")
-        self.intrinsics_file = os.path.expanduser("~/rs2_ws/src/perception/camera_intrinsics.json")
+        self.intrinsics_file = os.path.expanduser("/rs2_ws/src/perception/camera_intrinsics.json")
 
         # Save intrinsics only if file does not exist
         if not os.path.exists(self.intrinsics_file):
