@@ -10,6 +10,7 @@ setup(
         ('share/ament_index/resource_index/packages',
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
+        ('share/' + package_name + '/launch', ['launch/perception.launch.py']),
     ],
     install_requires=['setuptools', 'pyrealsense2', 'numpy', 'opencv-python', 'cv_bridge'],
     zip_safe=True,
