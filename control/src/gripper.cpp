@@ -44,10 +44,10 @@ public:
             50ms, std::bind(&GripperNode::timerTick, this));
 
         state_           = GripperState::IDLE;
-        current_width_   = 0.04;
-        sent_command_    = 0.04;
-        target_width_    = 0.04;
-        prev_width_      = 0.04;
+        current_width_   = 0.03;
+        sent_command_    = 0.03;
+        target_width_    = 0.03;
+        prev_width_      = 0.03;
         stable_count_    = 0;
         pause_ticks_     = 0;
         joint_received_  = false;
@@ -96,7 +96,7 @@ private:
         const std::string cmd = msg->data;
 
         if (cmd == "open")
-            startMove(0.04, false);
+            startMove(0.03, false);
         else if (cmd == "close")
             startMove(0.0, false);
         else if (cmd.rfind("pickup_", 0) == 0)
@@ -128,11 +128,11 @@ private:
     {
         RCLCPP_INFO(this->get_logger(), "Pickup: %s", active_object_.c_str());
 
-        if (current_width_ < 0.04 - sensor_tolerance_)
+        if (current_width_ < 0.03 - sensor_tolerance_)
         {
-            target_width_ = 0.04;
+            target_width_ = 0.03;
             state_        = GripperState::PICKUP_OPEN;
-            publishCommand(0.04);
+            publishCommand(0.03);
             RCLCPP_INFO(this->get_logger(), "Opening gripper before pickup (Current width is - %.3f)", current_width_);
         }
         else
@@ -170,7 +170,7 @@ private:
             return;
         }
 
-        startMove(0.04, true);
+        startMove(0.03, true);
     }
 
     void timerTick()
