@@ -1,3 +1,5 @@
+BEST ONE:"
+
 #include <memory>
 #include <thread>
 #include <vector>
@@ -17,6 +19,7 @@
 #include <shape_msgs/msg/solid_primitive.hpp>
 #include <std_msgs/msg/string.hpp>
 #include <std_msgs/msg/int32_multi_array.hpp>
+#include <std_msgs/msg/int32.hpp>
 #include <geometry_msgs/msg/pose.hpp>
 #include <tf2/LinearMath/Quaternion.h>
 #include <tf2/LinearMath/Vector3.h>
@@ -64,10 +67,10 @@ const std::vector<std::vector<double>> WALL_PICKUP_JOINTS = {
     {-1.77418,-2.01326,-1.19889,-1.47193,1.55733,1.3951},
 };
 
-0.217369,0.242935,0.0518124,0.999771,-0.014201,0.00975109,-0.0126598
-0.215782,0.286976,0.0511738,0.999774,-0.0141265,0.00957366,-0.0126424
-0.21561,0.333287,0.0510665,0.999777,-0.0140385,0.00941421,-0.0126666
-0.215466,0.375247,0.0493735,0.99978,-0.0139461,0.00927813,-0.0126231
+// 0.217369,0.242935,0.0518124,0.999771,-0.014201,0.00975109,-0.0126598
+// 0.215782,0.286976,0.0511738,0.999774,-0.0141265,0.00957366,-0.0126424
+// 0.21561,0.333287,0.0510665,0.999777,-0.0140385,0.00941421,-0.0126666
+// 0.215466,0.375247,0.0493735,0.99978,-0.0139461,0.00927813,-0.0126231
 
 
 // How far to retreat along tool axis for hover (metres)
@@ -468,13 +471,73 @@ int main(int argc, char * argv[])
         return false;
     };
 
-    // ================================================================ //                                                                                                                      
+    // ================================================================ //
     //  STARTUP — move to perception waypoint and verify board detection
-    // ================================================================ //                                                                                                                      
+    // ================================================================ //
     if (!ensureBoardDetected()) {
         RCLCPP_ERROR(logger, "WARNING: Board not detected at startup — continuing anyway");
     }
 
+    // ================================================================ //
+    //  WALL SLOT TEST SUBSCRIBER
+    //  Publish a slot number (1–4) to drive the robot to that wall pickup
+    //  joint config without needing a full BotMove action goal. Use this
+    //  to verify each slot is reachable before a real game run.
+    //
+    //  Example:
+    //    ros2 topic pub --once /quoridor/test_wall_pickup std_msgs/msg/Int32 "{data: 1}"
+    // ================================================================ //
+    std::atomic<bool> test_move_active{false};
+
+    auto wall_test_sub = node->create_subscription<std_msgs::msg::Int32>(
+        "/quoridor/test_wall_pickup", 10,
+        [&](std_msgs::msg::Int32::SharedPtr msg) {
+            int slot = msg->data;  // 1-indexed
+            if (slot < 1 || slot > static_cast<int>(WALL_PICKUP_JOINTS.size())) {
+                RCLCPP_ERROR(logger,
+                    "test_wall_pickup: slot %d out of range (1–%zu)",
+                    slot, WALL_PICKUP_JOINTS.size());
+                return;
+            }
+            if (test_move_active.exchange(true)) {
+                RCLCPP_WARN(logger, "test_wall_pickup: a test move is already running — ignoring");
+                return;
+            }
+            // Run in a detached thread so the subscriber callback returns immediately.
+            std::thread([&, slot]() {
+                RCLCPP_INFO(logger, "test_wall_pickup: moving to slot %d", slot);
+                const auto &pickup_joints = WALL_PICKUP_JOINTS[slot - 1];
+
+                // Disable board-zone constraints for the same reason as Step 2W.
+                move_group.clearPathConstraints();
+
+                bool ok = moveToJoints(move_group, pickup_joints,
+                    "test_wall_slot_" + std::to_string(slot), logger);
+
+                // Re-apply workspace constraints after test move.
+                {
+                    moveit_msgs::msg::Constraints c;
+                    for (const auto &b : JOINT_BOUNDS) {
+                        moveit_msgs::msg::JointConstraint jc;
+                        jc.joint_name      = b.name;
+                        jc.position        = deg2rad(b.centre_deg);
+                        jc.tolerance_above = deg2rad(b.tol_deg);
+                        jc.tolerance_below = deg2rad(b.tol_deg);
+                        jc.weight          = 1.0;
+                        c.joint_constraints.push_back(jc);
+                    }
+                    move_group.setPathConstraints(c);
+                }
+
+                if (ok) {
+                    RCLCPP_INFO(logger, "test_wall_pickup: slot %d reached — check position, then publish next slot or move on", slot);
+                } else {
+                    RCLCPP_ERROR(logger, "test_wall_pickup: slot %d FAILED — check joint bounds vs WALL_PICKUP_JOINTS values", slot);
+                }
+                test_move_active = false;
+            }).detach();
+        });
+        
     // ================================================================ //
     //  ACTION SERVER
     // ================================================================ //
@@ -517,13 +580,12 @@ int main(int argc, char * argv[])
         const auto &ori_place  = is_vwall ? ORI_VWALL : ORI_PAWN_HWALL;
         const auto &ori        = ori_pickup;
 
-        if (is_wall) {
-            if (wall_pickup_index >= static_cast<int>(WALL_PICKUP_JOINTS.size())) {
-                return abort("Wall pickup index out of bounds — more than 4 wall moves received");
-            }
-            RCLCPP_INFO(logger, "BotMove — piece: %s (wall slot %d/4)",
-                        is_hwall ? "HORIZONTAL WALL" : "VERTICAL WALL",
-                        wall_pickup_index + 1);
+    if (is_wall) {
+        // wall_pickup_index cycles 0→1→2→3→0→... — no hard limit.
+        wall_pickup_index = wall_pickup_index % static_cast<int>(WALL_PICKUP_JOINTS.size());
+        RCLCPP_INFO(logger, "BotMove — piece: %s (wall slot %d/4)",
+                    is_hwall ? "HORIZONTAL WALL" : "VERTICAL WALL",
+                    wall_pickup_index + 1);
         } else {
             RCLCPP_INFO(logger, "BotMove — piece: PAWN");
         }
@@ -566,8 +628,12 @@ int main(int argc, char * argv[])
                 return abort("Failed approaching start hover");
         }
 
-        // ---------------------------------------------------------- //
+// ---------------------------------------------------------- //
         //  STEP 2W (wall) — Joint move to wall pickup slot
+        //  Workspace joint constraints are cleared before this move
+        //  because the wall rack is outside the board zone — the
+        //  JOINT_BOUNDS would otherwise reject the pickup joint targets.
+        //  Constraints are re-applied immediately after the joint move.
         // ---------------------------------------------------------- //
         if (is_wall) {
             const auto &pickup_joints = WALL_PICKUP_JOINTS[wall_pickup_index];
@@ -575,13 +641,43 @@ int main(int argc, char * argv[])
                 std::string("Moving to wall pickup slot ") +
                 std::to_string(wall_pickup_index + 1));
 
-            if (!moveToJoints(move_group, pickup_joints, "wall_pickup_hover", logger))
+            // Disable board-zone constraints — wall rack is outside that region.
+            move_group.clearPathConstraints();
+
+            if (!moveToJoints(move_group, pickup_joints, "wall_pickup_hover", logger)) {
+                // Re-apply before aborting so subsequent moves are still safe.
+                moveit_msgs::msg::Constraints c;
+                for (const auto &b : JOINT_BOUNDS) {
+                    moveit_msgs::msg::JointConstraint jc;
+                    jc.joint_name      = b.name;
+                    jc.position        = deg2rad(b.centre_deg);
+                    jc.tolerance_above = deg2rad(b.tol_deg);
+                    jc.tolerance_below = deg2rad(b.tol_deg);
+                    jc.weight          = 1.0;
+                    c.joint_constraints.push_back(jc);
+                }
+                move_group.setPathConstraints(c);
                 return abort("Failed moving to wall pickup hover config");
+            }
+
+            // Re-apply workspace constraints now that we're at the pickup pose.
+            {
+                moveit_msgs::msg::Constraints c;
+                for (const auto &b : JOINT_BOUNDS) {
+                    moveit_msgs::msg::JointConstraint jc;
+                    jc.joint_name      = b.name;
+                    jc.position        = deg2rad(b.centre_deg);
+                    jc.tolerance_above = deg2rad(b.tol_deg);
+                    jc.tolerance_below = deg2rad(b.tol_deg);
+                    jc.weight          = 1.0;
+                    c.joint_constraints.push_back(jc);
+                }
+                move_group.setPathConstraints(c);
+            }
 
             start_hover = withOrientation(fkPose(move_group, pickup_joints), ori);
             start_fixed = hoverPose(start_hover, -HOVER_OFFSET_M);
         }
-
         // ---------------------------------------------------------- //
         //  STEPS 3–5 — Pickup with retry loop
         //
