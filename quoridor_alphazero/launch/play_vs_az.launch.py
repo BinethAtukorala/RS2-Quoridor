@@ -33,6 +33,7 @@ def generate_launch_description():
 
         Node(package="quoridor_alphazero", executable="ai_move_node",
              name="az_move_node",           output="screen",
+             prefix="/rs2_ws/src/quoridor_alphazero/env/bin/python3"
              parameters=[{
                  "model_dir":   LaunchConfiguration("model_dir"),
                  "side":        LaunchConfiguration("side"),

@@ -24,6 +24,7 @@ from quoridor_game.quoridor_utils import (
     Pawn,
     Wall,
 )
+from quoridor_interfaces.msg import ShortestPaths
 
 
 DEFAULT_HOST = "0.0.0.0"
@@ -222,6 +223,10 @@ INDEX_HTML = r"""<!doctype html>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="2"/></svg>
           E-STOP
         </button>
+        <button id="btnDebug" class="btn btn-secondary col-span-2 justify-center">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 19c-5 1.5-5-2.5-7-3"/><path d="M15 14l5-5"/><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg>
+          Debug · shortest paths
+        </button>
       </div>
     </div>
 
@@ -247,6 +252,8 @@ const state = {
   mode: 'move',         // 'move' | 'wallH' | 'wallV'
   hover: null,          // hover target for preview
   connected: false,
+  paths: null,          // { player_path: [...], bot_path: [...] }
+  showPaths: false,
 };
 
 const boardCanvas = document.getElementById('board');
@@ -269,6 +276,12 @@ function connectSSE() {
       applyState(data);
     } catch (e) { console.warn('bad SSE', e); }
   };
+  es.addEventListener('paths', (ev) => {
+    try {
+      state.paths = JSON.parse(ev.data);
+      drawBoard();
+    } catch (e) { console.warn('bad paths SSE', e); }
+  });
 }
 function setConnected(ok) {
   state.connected = ok;
@@ -447,6 +460,12 @@ function drawBoard() {
     }
   }
 
+  // Debug overlay — shortest paths
+  if (state.showPaths && state.paths) {
+    drawPath(state.paths.player_path, '#8b5e3c');
+    drawPath(state.paths.bot_path,    '#5b6c4d');
+  }
+
   // Pawns — flat, no glass/gradient
   drawPawn(b.player_pos.x, b.player_pos.y, '#8b5e3c', 'P');
   drawPawn(b.bot_pos.x,    b.bot_pos.y,    '#5b6c4d', 'B');
@@ -467,6 +486,35 @@ function drawBoard() {
     ctx.fillText(String(y), LAYOUT.pad + LAYOUT.inner + 18, cy);
   }
 
+  ctx.restore();
+}
+
+function drawPath(path, color) {
+  if (!path || path.length < 1) return;
+  const c = LAYOUT.cell();
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.fillStyle = color;
+  ctx.globalAlpha = 0.85;
+  ctx.lineWidth = Math.max(3, c * 0.06);
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.setLineDash([c * 0.18, c * 0.12]);
+  ctx.beginPath();
+  for (let i = 0; i < path.length; i++) {
+    const { cx, cy } = LAYOUT.cellXY(path[i].x, path[i].y);
+    if (i === 0) ctx.moveTo(cx, cy);
+    else         ctx.lineTo(cx, cy);
+  }
+  ctx.stroke();
+  ctx.setLineDash([]);
+  // dots on each waypoint
+  for (const p of path) {
+    const { cx, cy } = LAYOUT.cellXY(p.x, p.y);
+    ctx.beginPath();
+    ctx.arc(cx, cy, c * 0.07, 0, Math.PI * 2);
+    ctx.fill();
+  }
   ctx.restore();
 }
 
@@ -666,6 +714,14 @@ document.getElementById('btnStart').onclick    = () => { sendCommand({ command: 
 document.getElementById('btnStartBot').onclick = () => { sendCommand({ command: 'start', bot_first: true  }); log('> start bot'); };
 document.getElementById('btnToggle').onclick   = () => { sendCommand({ command: 'toggle_input' }); log('> toggle input'); };
 document.getElementById('btnEstop').onclick    = () => { sendCommand({ command: 'estop' }); toast('Emergency stop sent', 'warn'); log('> estop'); };
+document.getElementById('btnDebug').onclick    = () => {
+  state.showPaths = !state.showPaths;
+  const btn = document.getElementById('btnDebug');
+  btn.classList.toggle('btn-primary', state.showPaths);
+  btn.classList.toggle('btn-secondary', !state.showPaths);
+  log(state.showPaths ? '> debug paths on' : '> debug paths off');
+  drawBoard();
+};
 document.getElementById('btnClearLog').onclick = () => { document.getElementById('log').innerHTML = ''; };
 
 // ---------- Log + toast ----------
@@ -747,6 +803,7 @@ class WebInterface(Node):
         port = int(self.get_parameter('port').get_parameter_value().integer_value or DEFAULT_PORT)
 
         self._last_state_json: str | None = None
+        self._last_paths_json: str | None = None
         self._sse_clients: list[_SSEClient] = []
         self._sse_clients_lock = threading.Lock()
 
@@ -757,6 +814,8 @@ class WebInterface(Node):
         # --- subscribers ---
         self.sub_board_state = self.create_subscription(
             String, '/quoridor/board_state', self._on_board_state, 10)
+        self.sub_shortest_paths = self.create_subscription(
+            ShortestPaths, '/quoridor/shortest_paths', self._on_shortest_paths, 10)
 
         # --- HTTP server ---
         handler = _make_handler(self)
@@ -772,16 +831,29 @@ class WebInterface(Node):
 
     def _on_board_state(self, msg: String) -> None:
         self._last_state_json = msg.data
-        self._broadcast(msg.data)
+        self._broadcast('message', msg.data)
 
-    def _broadcast(self, payload: str) -> None:
+    def _on_shortest_paths(self, msg: ShortestPaths) -> None:
+        payload = json.dumps({
+            'player_path': [
+                {'x': int(round(p.x)), 'y': int(round(p.y))} for p in msg.player_path
+            ],
+            'bot_path': [
+                {'x': int(round(p.x)), 'y': int(round(p.y))} for p in msg.bot_path
+            ],
+        })
+        self._last_paths_json = payload
+        self._broadcast('paths', payload)
+
+    def _broadcast(self, event: str, payload: str) -> None:
+        item = (event, payload)
         with self._sse_clients_lock:
             dead = []
             for c in self._sse_clients:
                 if not c.alive:
                     dead.append(c); continue
                 try:
-                    c.q.put_nowait(payload)
+                    c.q.put_nowait(item)
                 except queue.Full:
                     c.alive = False
                     dead.append(c)
@@ -794,7 +866,12 @@ class WebInterface(Node):
             self._sse_clients.append(c)
         if self._last_state_json is not None:
             try:
-                c.q.put_nowait(self._last_state_json)
+                c.q.put_nowait(('message', self._last_state_json))
+            except queue.Full:
+                pass
+        if self._last_paths_json is not None:
+            try:
+                c.q.put_nowait(('paths', self._last_paths_json))
             except queue.Full:
                 pass
 
@@ -937,8 +1014,11 @@ def _make_handler(node: WebInterface):
                 self.wfile.flush()
                 while client.alive:
                     try:
-                        payload = client.q.get(timeout=15.0)
-                        chunk = f'data: {payload}\n\n'.encode('utf-8')
+                        event, payload = client.q.get(timeout=15.0)
+                        if event and event != 'message':
+                            chunk = f'event: {event}\ndata: {payload}\n\n'.encode('utf-8')
+                        else:
+                            chunk = f'data: {payload}\n\n'.encode('utf-8')
                         self.wfile.write(chunk)
                         self.wfile.flush()
                     except queue.Empty:

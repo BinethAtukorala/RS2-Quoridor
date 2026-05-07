@@ -212,3 +212,37 @@ cp /rs2_ws/quoridor_az_models/run1/az_net.weights.bak1.h5 \
 | Step penalty | Same — outcome-only training. Stalling is naturally penalized: a long unfinished game gives `z = 0` to both sides, so the network learns there's no reward in dragging things out. |
 | Online learning in the ROS node | AZ learning needs full self-play games at training-time scale. Per-move callbacks aren't the right granularity. Train offline with `train.py`, deploy the weights, repeat. |
 | `train_vs_minimax` curriculum | Not needed: the network bootstraps from MCTS using its own (initially random) value estimates, which is enough signal to escape the cold start. If you want a curriculum, the right way is to use the minimax engine as the *opponent* in `play_game` — easy to add later. |
+
+# Distributed
+
+  What it does                                                                                                                                                                                
+                                                                                                                                                                                              
+  Same self-play / mp.Pool / SGD loop as train.py, but the model + optimizer are built inside tf.distribute.MultiWorkerMirroredStrategy().scope() — exactly the pattern from                  
+  quoridor_ai_move/train.py:623,651,686. Each PC plays its own self-play games into its own local replay buffer; optimizer.apply_gradients all-reduces gradients across PCs every step so they
+   stay in sync. Only the chief (TF_CONFIG task index 0) writes TensorBoard / saves checkpoints / saves the buffer.                                                                           
+                                                                                                                                                                                            
+  Launch                                                                                                                                                                                      
+                                                                                                                                                                                              
+  ## PC 0 (chief)                                                                                                                                                                              
+  TF_CONFIG='{"cluster":{"worker":["192.168.6.122:12345","192.168.5.199:12345"]},"task":{"type":"worker","index":0}}' python -m train_distributed --distributed --workers 12 --resume --episodes 5000 --model-dir ~/rs2_ws/quoridor_az_models/run1 --tb-log-dir ~/rs2_ws/quoridor_az_tensorboard/run1_4 --batch-size 1024 --lr-resume 8e-4                            
+                                                                                                                                                                                              
+  ## PC 1                                                                                                                                                                                      
+  TF_CONFIG='{"cluster":{"worker":["192.168.6.122:12345","192.168.5.199:12345"]},"task":{"type":"worker","index":1}}' python -m quoridor_alphazero.train_distributed --distributed --workers 12 --resume --episodes 5000 --model-dir ~/mnt/samba/quoridor_az_models/run1 --tb-log-dir ~/mnt/samba/quoridor_az_tensorboard/run1_4_1 --batch-size 1024 --lr-resume 8e-4                                                                                                       
+   
+  Without --distributed it falls back to tf.distribute.get_strategy() (or MirroredStrategy if you have multiple local GPUs) and behaves like train.py.                                        
+                  
+  Two things to know                                                                                                                                                                          
+                  
+  1. Effective batch scales with PC count. Per-PC batch is --batch-size; global batch is batch_size × num_workers. So with 2 PCs at --batch-size 1024 you're effectively training on 2048     
+  samples per step. You may want to scale --lr with the global batch (or just let the larger batch act as variance reduction).
+  2. Buffer-size barrier deadlock risk. Training only runs when the local buffer has ≥ batch_size. If one PC reaches that threshold and another hasn't, the cluster will deadlock on the      
+  all-reduce. With identical configs (same --workers, --simulations, etc.) all PCs fill at the same rate, so this is fine in practice — but if you start one PC late or with very different   
+  settings, you'll hang on the first SGD step. Fix is to either start them simultaneously or pre-load a shared replay buffer via --resume.
+                                                                                                                                                                                              
+  Run colcon build --packages-select quoridor_alphazero (or just pip install -e . since it's an egg-link install) before the new entry point is on PATH.   
+
+
+  ```
+  TF_CONFIG='{"cluster":{"worker":["192.168.6.122:12345","192.168.5.199:12345"]},"task":{"type":"worker","index":0}}' python -m train_distributed --distributed --workers 12 --resume --episodes 5000 --model-dir ~/rs2_ws/quoridor_az_models/run1 --tb-log-dir ~/rs2_ws/quoridor_az_tensorboard/run1_4 --batch-size 1024 --lr-resume 8e-4  
+
+TF_CONFIG='{"cluster":{"worker":["192.168.6.122:12345","192.168.5.199:12345"]},"task":{"type":"worker","index":1}}' python -m train_distributed --distributed --workers 12 --resume --episodes 5000 --model-dir ~/mnt/samba/quoridor_az_models/run1 --tb-log-dir ~/mnt/samba/quoridor_az_tensorboard/run1_4_1 --batch-size 1024 --lr-resume 8e-4  

@@ -4,12 +4,13 @@ import rclpy
 from rclpy.node import Node
 from rclpy.action import ActionClient
 from std_msgs.msg import String, Int32MultiArray, Float32MultiArray
-from geometry_msgs.msg import Pose
+from geometry_msgs.msg import Pose, Point
 from threading import Lock
 import numpy as np
 
 from quoridor_interfaces.action import BotMove as BotMoveAction
 from quoridor_interfaces.srv import GetCoords
+from quoridor_interfaces.msg import ShortestPaths
 
 from quoridor_game.quoridor_utils import (
     Move,
@@ -46,6 +47,8 @@ class StateManager(Node):
             String, '/quoridor/board_state', 10)
         self.pub_compute_request = self.create_publisher(
             String, '/quoridor/compute_move_request', 10)
+        self.pub_shortest_paths = self.create_publisher(
+            ShortestPaths, '/quoridor/shortest_paths', 10)
         # Move execution subsystem — action client. The action server is
         # expected to advertise BotMove on /quoridor/bot_execute.
         self.bot_execute_client = ActionClient(
@@ -98,6 +101,26 @@ class StateManager(Node):
         msg = String()
         msg.data = json.dumps(state)
         self.pub_board_state.publish(msg)
+        self.publish_shortest_paths()
+
+    def publish_shortest_paths(self):
+        msg = ShortestPaths()
+        if self.board.game_status == "in_progress":
+            player_path = self.board.shortest_path(self.board.player_pos_, 0)
+            bot_path = self.board.shortest_path(
+                self.board.bot_pos_, self.board.n_ - 1)
+        else:
+            player_path = None
+            bot_path = None
+
+        def to_points(path):
+            if not path:
+                return []
+            return [Point(x=float(p.x), y=float(p.y), z=0.0) for p in path]
+
+        msg.player_path = to_points(player_path)
+        msg.bot_path = to_points(bot_path)
+        self.pub_shortest_paths.publish(msg)
 
     # ------------------------------------------------------------------ #
     #  Player move handling                                               #
