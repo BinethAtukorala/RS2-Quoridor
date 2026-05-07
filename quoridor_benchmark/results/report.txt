@@ -1,0 +1,66 @@
+  QUORIDOR AI BENCHMARK REPORT
+  Board: 5x5   Games/pair: 200   Total games: 8400
+
+  OVERALL RANKING  (by Win Rate)
+  ------------------------------------------------------------------
+  Rank  Agent                          Win%      W      L      D
+  ------------------------------------------------------------------
+  1     Minimax-d3                   70.3%   1687    713      0
+  2     AlphaZero                    70.1%   1682    718      0
+  3     Minimax-d2                   50.2%   1204    996    200
+  4     DQN-mac_eng_4                42.3%   1016   1192    192
+  5     DQN-mac_eng_4_2              42.2%   1013   1193    194
+  6     DQN-mac_eng_7_4              29.6%    710   1104    586
+  7     DQN-mac_eng_5_4              20.9%    502   1898      0
+
+  PER-AGENT STATS
+  Minimax-d3
+    Win rate : 70.3%
+    Avg plies: 19.0
+    Move time: avg 64.2 ms   max 322 ms
+
+  AlphaZero
+    Win rate : 70.1%
+    Avg plies: 19.0
+    Move time: avg 623.2 ms   max 1596 ms
+
+  Minimax-d2
+    Win rate : 50.2%
+    Avg plies: 29.6
+    Move time: avg 8.6 ms   max 83 ms
+
+  DQN-mac_eng_4
+    Win rate : 42.3%
+    Avg plies: 29.3
+    Move time: avg 11.3 ms   max 131 ms
+
+  DQN-mac_eng_4_2
+    Win rate : 42.2%
+    Avg plies: 29.4
+    Move time: avg 9.6 ms   max 19 ms
+
+  DQN-mac_eng_7_4
+    Win rate : 29.6%
+    Avg plies: 51.2
+    Move time: avg 10.7 ms   max 90 ms
+
+  DQN-mac_eng_5_4
+    Win rate : 20.9%
+    Avg plies: 13.3
+    Move time: avg 9.8 ms   max 17 ms
+
+  HEAD-TO-HEAD WIN RATES
+  ------------------------------------------------------------------------------------------------------------
+                          Minimax-d2  Minimax-d3  DQN-mac_en  DQN-mac_en  DQN-mac_en  DQN-mac_en   AlphaZero
+  Minimax-d2                       —      50.0%       74.0%       73.8%       50.0%        0.0%       53.2% 
+  Minimax-d3                  50.0%            —      74.2%       74.2%       72.5%       74.5%       76.2% 
+  DQN-mac_eng_4               26.0%       25.8%            —      50.2%      100.0%       52.0%        0.0% 
+  DQN-mac_eng_4_2             26.2%       25.8%       49.8%            —     100.0%       51.5%        0.0% 
+  DQN-mac_eng_5_4             50.0%       27.5%        0.0%        0.0%            —      48.0%        0.0% 
+  DQN-mac_eng_7_4             50.0%       25.5%        0.0%        0.0%       52.0%            —      50.0% 
+  AlphaZero                   46.8%       23.8%      100.0%      100.0%      100.0%       50.0%            —
+
+  GAME EXTREMES
+    Shortest: 7 plies  (Minimax-d2 vs DQN-mac_eng_5_4 -> bot wins)
+    Longest : 150 plies  (DQN-mac_eng_7_4 vs DQN-mac_eng_4_2 -> draw wins)
+    Draws/timeouts: 586  (7.0%)
