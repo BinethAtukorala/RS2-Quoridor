@@ -24,6 +24,16 @@ python -m quoridor_benchmark \
     --az-sims 64 \
     --games 20 \
     --output ./benchmark_results
+
+# AlphaZero vs specific DQNs only (skip DQN vs DQN):
+python -m quoridor_benchmark \
+    --alphazero ~/az_model,name=AlphaZero \
+    --dqn ~/dqn1,name=DQN_4 \
+    --dqn ~/dqn2,name=DQN_7 \
+    --matchup AlphaZero:DQN_4 \
+    --matchup AlphaZero:DQN_7 \
+    --games 50 \
+    --output ./benchmark_results
 """
 from __future__ import annotations
 
@@ -92,6 +102,18 @@ def main(argv=None):
     p.add_argument("--workers",  type=int, default=1,    help="Parallel workers (default 1; use 1 with TF).")
     p.add_argument("--output",   type=str, default=None, help="Directory to save report.txt, results.json, h2h.csv.")
     p.add_argument("--quiet",    action="store_true",    help="Suppress progress output.")
+    p.add_argument(
+        "--matchup",
+        metavar="AGENT_A:AGENT_B",
+        action="append",
+        default=[],
+        help=(
+            "Restrict to specific matchups. Repeatable. "
+            "Use agent names separated by ':'. "
+            "If omitted, all pairs are tested (full round-robin). "
+            "E.g. --matchup AlphaZero:DQN_4 --matchup AlphaZero:DQN_7"
+        ),
+    )
 
     args = p.parse_args(argv)
 
@@ -110,7 +132,6 @@ def main(argv=None):
 
     # ── DQN agents ──────────────────────────────────────────────────────────
     for spec in args.dqn:
-        # First token may be a path (no =), rest are k=v
         parts = spec.split(",")
         model_dir = parts[0] if "=" not in parts[0] else None
         kv = _parse_kv(",".join(parts[1:] if model_dir else parts))
@@ -140,7 +161,28 @@ def main(argv=None):
     if len(agents) < 2:
         p.error("Need at least 2 agents. Use --engine, --dqn, --alphazero.")
 
-    print(f"\n  Running round-robin: {len(agents)} agents × {args.games} games/pair\n")
+    # ── Matchup filter ───────────────────────────────────────────────────────
+    matchups = None
+    if args.matchup:
+        matchups = []
+        for m in args.matchup:
+            if ":" not in m:
+                p.error(f"--matchup must be in format AGENT_A:AGENT_B, got: {m!r}")
+            a, b = m.split(":", 1)
+            a, b = a.strip(), b.strip()
+            if a not in agents:
+                p.error(f"--matchup agent '{a}' not registered. Check spelling and --dqn/--engine/--alphazero names.")
+            if b not in agents:
+                p.error(f"--matchup agent '{b}' not registered. Check spelling and --dqn/--engine/--alphazero names.")
+            matchups.append((a, b))
+
+    if matchups:
+        print(f"\n  Running {len(matchups)} matchup(s) × {args.games} games/pair")
+        for a, b in matchups:
+            print(f"    {a} vs {b}")
+    else:
+        print(f"\n  Running round-robin: {len(agents)} agents × {args.games} games/pair")
+    print()
 
     cfg = BenchmarkConfig(
         games_per_pair=args.games,
@@ -149,6 +191,7 @@ def main(argv=None):
         seed=args.seed,
         n_workers=args.workers,
         verbose=not args.quiet,
+        matchups=matchups,
     )
 
     result = run_benchmark(agents, config=cfg)

@@ -26,7 +26,15 @@ from .quoridor_utils import QuoridorBoard
 class BenchmarkConfig:
     """Configuration for a benchmark run."""
     games_per_pair: int = 20
-    """Number of games per ordered pair (A vs B and B vs A each get this many)."""
+    """Total number of games between each unordered pair (A, B).
+    Half are played with A as bot, half with B as bot.
+    e.g. games_per_pair=200 → 100 games each direction → 200 total."""
+
+    matchups: list[tuple[str, str]] | None = None
+    """Optional explicit list of unordered pairs to test.
+    If None, all pairs are tested (full round-robin).
+    e.g. [("AlphaZero", "DQN-1"), ("AlphaZero", "DQN-2")]
+    will only run AlphaZero vs each DQN, skipping DQN vs DQN."""
 
     board_n: int = 5
     max_plies: int = 150
@@ -55,11 +63,7 @@ def compute_elo(
     base: float = 1500.0,
     n_passes: int = 200,
 ) -> dict[str, float]:
-    """Converged Elo via multiple shuffled passes with decaying K.
-
-    Single-pass Elo is order-dependent and unstable for round-robin tournaments.
-    Multiple passes over shuffled results with decaying K converges to stable ratings.
-    """
+    """Converged Elo via multiple shuffled passes with decaying K."""
     import random as _random
     elo = {name: base for name in agent_names}
 
@@ -102,7 +106,9 @@ class AgentStats:
 
     @property
     def win_rate(self) -> float:
-        return self.wins / self.total_games if self.total_games else 0.0
+        """Wins / (wins + losses). Draws excluded from denominator."""
+        decisive = self.wins + self.losses
+        return self.wins / decisive if decisive else 0.0
 
     @property
     def avg_plies(self) -> float:
@@ -134,34 +140,38 @@ def _update_stats(stats: dict[str, AgentStats], r: MatchResult):
         stats[loser].illegal_moves += 1
 
     if r.winner == "bot":
-        bot_s.wins   += 1
+        bot_s.wins    += 1
         play_s.losses += 1
     elif r.winner == "player":
         play_s.wins  += 1
-        bot_s.losses  += 1
+        bot_s.losses += 1
     else:
         bot_s.draws  += 1
         play_s.draws += 1
 
 
 # ---------------------------------------------------------------------------
-# Head-to-head record
+# Head-to-head record  (symmetric, unordered pairs)
 # ---------------------------------------------------------------------------
 
 @dataclass
 class H2HRecord:
-    wins_as_bot: int = 0
-    wins_as_player: int = 0
+    """Symmetric head-to-head record between an unordered pair of agents."""
+    wins: int = 0
+    losses: int = 0
     draws: int = 0
     games: int = 0
 
     @property
-    def total_wins(self) -> int:
-        return self.wins_as_bot + self.wins_as_player
-
-    @property
     def win_rate(self) -> float:
-        return self.total_wins / self.games if self.games else 0.0
+        """Win rate excluding draws from denominator."""
+        decisive = self.wins + self.losses
+        return self.wins / decisive if decisive else 0.0
+
+
+def _canonical(a: str, b: str) -> tuple[str, str]:
+    """Return a consistent ordering for an unordered pair."""
+    return (a, b) if a < b else (b, a)
 
 
 # ---------------------------------------------------------------------------
@@ -175,7 +185,20 @@ class BenchmarkResult:
     all_matches: list[MatchResult]
     stats: dict[str, AgentStats]
     elo: dict[str, float]
-    h2h: dict[tuple[str, str], H2HRecord]   # (A, B) = A's record against B
+    h2h: dict[tuple[str, str], H2HRecord]
+    """Keys are canonical (alphabetically sorted) pairs.
+    h2h[(a, b)].wins = number of times *a* beat *b* (regardless of role)."""
+
+    def h2h_win_rate(self, agent: str, opponent: str) -> float:
+        """Win rate of *agent* against *opponent* (draws excluded from denominator)."""
+        key = _canonical(agent, opponent)
+        rec = self.h2h.get(key)
+        if rec is None or rec.games == 0:
+            return 0.0
+        wins   = rec.wins   if key[0] == agent else rec.losses
+        losses = rec.losses if key[0] == agent else rec.wins
+        decisive = wins + losses
+        return wins / decisive if decisive else 0.0
 
     @property
     def ranking(self) -> list[tuple[str, float]]:
@@ -191,7 +214,7 @@ def run_benchmark(
     agents: dict[str, Policy],
     config: BenchmarkConfig | None = None,
 ) -> BenchmarkResult:
-    """Run a full round-robin benchmark.
+    """Run a benchmark tournament.
 
     Parameters
     ----------
@@ -210,30 +233,40 @@ def run_benchmark(
     names = list(agents.keys())
     assert len(names) >= 2, "Need at least 2 agents to benchmark."
 
+    # Resolve which unordered pairs to run
+    if config.matchups is not None:
+        pairs = [_canonical(a, b) for a, b in config.matchups]
+        for a, b in pairs:
+            assert a in agents, f"Agent '{a}' in matchups not found in agents dict."
+            assert b in agents, f"Agent '{b}' in matchups not found in agents dict."
+        # Deduplicate in case user passed the same pair twice
+        pairs = list(dict.fromkeys(pairs))
+    else:
+        pairs = [_canonical(a, b) for a in names for b in names if a < b]
+
     stats = {n: AgentStats(name=n) for n in names}
-    h2h: dict[tuple[str, str], H2HRecord] = {
-        (a, b): H2HRecord()
-        for a in names
-        for b in names
-        if a != b
-    }
+    h2h: dict[tuple[str, str], H2HRecord] = {pair: H2HRecord() for pair in pairs}
     all_matches: list[MatchResult] = []
 
-    # Build the job list: ordered pairs × games_per_pair
+    # games_per_pair is total; split evenly each direction
+    games_each_direction = config.games_per_pair // 2
+
+    # Build job list: both directions per pair × games_each_direction
     jobs = []
-    for bot_name, player_name in itertools.permutations(names, 2):
-        for game_idx in range(config.games_per_pair):
-            seed = None
-            if config.seed is not None:
-                seed = config.seed + hash((bot_name, player_name, game_idx)) % (2**31)
-            jobs.append((bot_name, player_name, seed))
+    for a, b in pairs:
+        for game_idx in range(games_each_direction):
+            for bot_name, player_name in [(a, b), (b, a)]:
+                seed = None
+                if config.seed is not None:
+                    seed = config.seed + hash((bot_name, player_name, game_idx)) % (2**31)
+                jobs.append((bot_name, player_name, seed))
 
     total = len(jobs)
     completed = 0
 
     def _run_job(job):
         bot_name, player_name, seed = job
-        r = play_match(
+        return play_match(
             bot_policy=agents[bot_name],
             player_policy=agents[player_name],
             bot_name=bot_name,
@@ -242,28 +275,32 @@ def run_benchmark(
             max_plies=config.max_plies,
             seed=seed,
         )
-        return r
+
+    def _record_match(r: MatchResult):
+        _update_stats(stats, r)
+
+        key = _canonical(r.bot_name, r.player_name)
+        rec = h2h[key]
+        rec.games += 1
+
+        if r.winner == "draw":
+            rec.draws += 1
+        else:
+            winner_name = r.bot_name if r.winner == "bot" else r.player_name
+            if key[0] == winner_name:
+                rec.wins += 1
+            else:
+                rec.losses += 1
 
     if config.n_workers == 1:
         for i, job in enumerate(jobs, 1):
             r = _run_job(job)
             all_matches.append(r)
-            _update_stats(stats, r)
-
-            # Update h2h
-            bot_n, play_n = r.bot_name, r.player_name
-            h2h[(bot_n, play_n)].games += 1
-            h2h[(play_n, bot_n)].games += 1
-            if r.winner == "bot":
-                h2h[(bot_n, play_n)].wins_as_bot += 1
-            elif r.winner == "player":
-                h2h[(play_n, bot_n)].wins_as_player += 1
-            else:
-                h2h[(bot_n, play_n)].draws += 1
-                h2h[(play_n, bot_n)].draws += 1
+            _record_match(r)
 
             if config.verbose and i % max(1, total // 20) == 0:
                 pct = 100 * i / total
+                bot_n, play_n = job[0], job[1]
                 print(f"  [{i:4d}/{total}  {pct:5.1f}%]  last: {bot_n} vs {play_n} → {r.winner}")
     else:
         with ThreadPoolExecutor(max_workers=config.n_workers) as ex:
@@ -271,17 +308,7 @@ def run_benchmark(
             for fut in as_completed(futures):
                 r = fut.result()
                 all_matches.append(r)
-                _update_stats(stats, r)
-                bot_n, play_n = r.bot_name, r.player_name
-                h2h[(bot_n, play_n)].games += 1
-                h2h[(play_n, bot_n)].games += 1
-                if r.winner == "bot":
-                    h2h[(bot_n, play_n)].wins_as_bot += 1
-                elif r.winner == "player":
-                    h2h[(play_n, bot_n)].wins_as_player += 1
-                else:
-                    h2h[(bot_n, play_n)].draws += 1
-                    h2h[(play_n, bot_n)].draws += 1
+                _record_match(r)
 
                 completed += 1
                 if config.verbose and completed % max(1, total // 20) == 0:

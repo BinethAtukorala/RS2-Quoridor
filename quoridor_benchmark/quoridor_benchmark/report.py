@@ -33,6 +33,8 @@ def generate_report(
     -------
     str : The rendered report text.
     """
+    from .benchmark import _canonical  # runtime import to avoid circular
+
     lines: list[str] = []
     cfg = result.config
 
@@ -54,15 +56,16 @@ def generate_report(
     )
 
     # ── Rankings ──────────────────────────────────────────────────────────
-    ln("  OVERALL RANKING  (by Win Rate)")
+    ln("  OVERALL RANKING  (by Win Rate, draws excluded from denominator)")
     ln("  " + "-" * 66)
-    ln(f"  {'Rank':<5} {'Agent':<28} {'Win%':>6} {'W':>6} {'L':>6} {'D':>6}")
+    ln(f"  {'Rank':<5} {'Agent':<28} {'Win%':>6} {'W':>6} {'L':>6} {'D':>6} {'GP':>6}")
     ln("  " + "-" * 66)
 
     for rank, (name, _elo) in enumerate(ranking_by_winrate, 1):
         s = result.stats[name]
         ln(
-            f"  {rank:<5} {name:<28} {s.win_rate:>5.1%} {s.wins:>6} {s.losses:>6} {s.draws:>6}"
+            f"  {rank:<5} {name:<28} {s.win_rate:>5.1%} "
+            f"{s.wins:>6} {s.losses:>6} {s.draws:>6} {s.total_games:>6}"
         )
     ln()
 
@@ -71,7 +74,8 @@ def generate_report(
     for name, _ in ranking_by_winrate:
         s = result.stats[name]
         ln(f"  {name}")
-        ln(f"    Win rate : {s.win_rate:.1%}")
+        ln(f"    Win rate : {s.win_rate:.1%}  (draws excluded from denominator)")
+        ln(f"    Record   : {s.wins}W / {s.losses}L / {s.draws}D  ({s.total_games} games played)")
         ln(f"    Avg plies: {s.avg_plies:.1f}")
         ln(f"    Move time: avg {s.avg_move_ms:.1f} ms   max {s.max_move_ms:.0f} ms")
         ln()
@@ -80,7 +84,7 @@ def generate_report(
     names = result.agent_names
     col_w = 12
     table_width = 24 + col_w * len(names)
-    ln("  HEAD-TO-HEAD WIN RATES")
+    ln("  HEAD-TO-HEAD WIN RATES  (symmetric, draws excluded from denominator)")
     ln("  " + "-" * table_width)
     ln("  " + " " * 22 + "".join(f"{n[:10]:>{col_w}}" for n in names))
     for a in names:
@@ -89,12 +93,14 @@ def generate_report(
             if a == b:
                 row += f"{'—':>{col_w}}"
             else:
-                rec = result.h2h.get((a, b))
-                if rec and rec.games:
-                    wr = rec.total_wins / rec.games
-                    row += f"{wr:>{col_w-1}.1%} "
+                key = _canonical(a, b)
+                rec = result.h2h.get(key)
+                if rec is None or rec.games == 0:
+                    # Pair was not in the matchup filter — show dash
+                    row += f"{'—':>{col_w}}"
                 else:
-                    row += f"{'N/A':>{col_w}}"
+                    wr = result.h2h_win_rate(a, b)
+                    row += f"{wr:>{col_w-1}.1%} "
         ln(row)
     ln()
 
@@ -144,6 +150,7 @@ def generate_report(
                     "wins": result.stats[name].wins,
                     "losses": result.stats[name].losses,
                     "draws": result.stats[name].draws,
+                    "total_games": result.stats[name].total_games,
                     "avg_plies": round(result.stats[name].avg_plies, 1),
                     "avg_move_ms": round(result.stats[name].avg_move_ms, 2),
                     "max_move_ms": round(result.stats[name].max_move_ms, 2),
@@ -152,32 +159,31 @@ def generate_report(
             ],
             "head_to_head": [
                 {
-                    "agent_a": a,
-                    "agent_b": b,
+                    "agent_a": key[0],
+                    "agent_b": key[1],
                     "games": rec.games,
-                    "wins_a": rec.total_wins,
+                    "wins_a": rec.wins,
+                    "losses_a": rec.losses,
+                    "draws": rec.draws,
                     "win_rate_a": round(rec.win_rate, 4),
                 }
-                for (a, b), rec in result.h2h.items()
+                for key, rec in result.h2h.items()
                 if rec.games
             ],
             "total_games": len(result.all_matches),
         }
         (out / "results.json").write_text(json.dumps(json_data, indent=2))
 
-        # h2h.csv
+        # h2h.csv — one row per canonical pair that was actually played
         csv_lines = ["agent_a,agent_b,games,wins_a,losses_a,draws,win_rate_a"]
-        for a in names:
-            for b in names:
-                if a == b:
-                    continue
-                rec = result.h2h.get((a, b))
-                if rec and rec.games:
-                    losses_a = rec.games - rec.total_wins - rec.draws
-                    csv_lines.append(
-                        f"{a},{b},{rec.games},{rec.total_wins},"
-                        f"{losses_a},{rec.draws},{rec.win_rate:.4f}"
-                    )
+        for key, rec in result.h2h.items():
+            if not rec.games:
+                continue
+            a, b = key
+            csv_lines.append(
+                f"{a},{b},{rec.games},{rec.wins},"
+                f"{rec.losses},{rec.draws},{rec.win_rate:.4f}"
+            )
         (out / "h2h.csv").write_text("\n".join(csv_lines))
 
         # match_log.csv — one row per game
