@@ -1,6 +1,6 @@
 {
   "config": {
-    "games_per_pair": 200,
+    "games_per_pair": 3,
     "board_n": 5,
     "max_plies": 150,
     "seed": 42,
@@ -10,377 +10,60 @@
   "ranking": [
     {
       "rank": 1,
-      "name": "Minimax-d3",
-      "win_rate": 0.7029,
-      "wins": 1687,
-      "losses": 713,
+      "name": "AlphaZero",
+      "win_rate": 0.75,
+      "wins": 3,
+      "losses": 1,
       "draws": 0,
-      "avg_plies": 19.0,
-      "avg_move_ms": 64.16,
-      "max_move_ms": 321.58
+      "total_games": 4,
+      "avg_plies": 21.2,
+      "avg_move_ms": 818.18,
+      "max_move_ms": 1225.65
     },
     {
       "rank": 2,
-      "name": "AlphaZero",
-      "win_rate": 0.7008,
-      "wins": 1682,
-      "losses": 718,
+      "name": "DQN_7_4",
+      "win_rate": 0.5,
+      "wins": 1,
+      "losses": 1,
       "draws": 0,
+      "total_games": 2,
       "avg_plies": 19.0,
-      "avg_move_ms": 623.25,
-      "max_move_ms": 1595.76
+      "avg_move_ms": 13.21,
+      "max_move_ms": 14.1
     },
     {
       "rank": 3,
-      "name": "Minimax-d2",
-      "win_rate": 0.5017,
-      "wins": 1204,
-      "losses": 996,
-      "draws": 200,
-      "avg_plies": 29.6,
-      "avg_move_ms": 8.61,
-      "max_move_ms": 82.7
-    },
-    {
-      "rank": 4,
-      "name": "DQN-mac_eng_4",
-      "win_rate": 0.4233,
-      "wins": 1016,
-      "losses": 1192,
-      "draws": 192,
-      "avg_plies": 29.3,
-      "avg_move_ms": 11.3,
-      "max_move_ms": 130.61
-    },
-    {
-      "rank": 5,
-      "name": "DQN-mac_eng_4_2",
-      "win_rate": 0.4221,
-      "wins": 1013,
-      "losses": 1193,
-      "draws": 194,
-      "avg_plies": 29.4,
-      "avg_move_ms": 9.61,
-      "max_move_ms": 18.91
-    },
-    {
-      "rank": 6,
-      "name": "DQN-mac_eng_7_4",
-      "win_rate": 0.2958,
-      "wins": 710,
-      "losses": 1104,
-      "draws": 586,
-      "avg_plies": 51.2,
-      "avg_move_ms": 10.69,
-      "max_move_ms": 90.1
-    },
-    {
-      "rank": 7,
-      "name": "DQN-mac_eng_5_4",
-      "win_rate": 0.2092,
-      "wins": 502,
-      "losses": 1898,
+      "name": "DQN_4",
+      "win_rate": 0.0,
+      "wins": 0,
+      "losses": 2,
       "draws": 0,
-      "avg_plies": 13.3,
-      "avg_move_ms": 9.8,
-      "max_move_ms": 17.36
+      "total_games": 2,
+      "avg_plies": 23.5,
+      "avg_move_ms": 14.66,
+      "max_move_ms": 48.2
     }
   ],
   "head_to_head": [
     {
-      "agent_a": "Minimax-d2",
-      "agent_b": "Minimax-d3",
-      "games": 400,
-      "wins_a": 200,
-      "win_rate_a": 0.5
-    },
-    {
-      "agent_a": "Minimax-d2",
-      "agent_b": "DQN-mac_eng_4",
-      "games": 400,
-      "wins_a": 296,
-      "win_rate_a": 0.74
-    },
-    {
-      "agent_a": "Minimax-d2",
-      "agent_b": "DQN-mac_eng_4_2",
-      "games": 400,
-      "wins_a": 295,
-      "win_rate_a": 0.7375
-    },
-    {
-      "agent_a": "Minimax-d2",
-      "agent_b": "DQN-mac_eng_5_4",
-      "games": 400,
-      "wins_a": 200,
-      "win_rate_a": 0.5
-    },
-    {
-      "agent_a": "Minimax-d2",
-      "agent_b": "DQN-mac_eng_7_4",
-      "games": 400,
-      "wins_a": 0,
-      "win_rate_a": 0.0
-    },
-    {
-      "agent_a": "Minimax-d2",
-      "agent_b": "AlphaZero",
-      "games": 400,
-      "wins_a": 213,
-      "win_rate_a": 0.5325
-    },
-    {
-      "agent_a": "Minimax-d3",
-      "agent_b": "Minimax-d2",
-      "games": 400,
-      "wins_a": 200,
-      "win_rate_a": 0.5
-    },
-    {
-      "agent_a": "Minimax-d3",
-      "agent_b": "DQN-mac_eng_4",
-      "games": 400,
-      "wins_a": 297,
-      "win_rate_a": 0.7425
-    },
-    {
-      "agent_a": "Minimax-d3",
-      "agent_b": "DQN-mac_eng_4_2",
-      "games": 400,
-      "wins_a": 297,
-      "win_rate_a": 0.7425
-    },
-    {
-      "agent_a": "Minimax-d3",
-      "agent_b": "DQN-mac_eng_5_4",
-      "games": 400,
-      "wins_a": 290,
-      "win_rate_a": 0.725
-    },
-    {
-      "agent_a": "Minimax-d3",
-      "agent_b": "DQN-mac_eng_7_4",
-      "games": 400,
-      "wins_a": 298,
-      "win_rate_a": 0.745
-    },
-    {
-      "agent_a": "Minimax-d3",
-      "agent_b": "AlphaZero",
-      "games": 400,
-      "wins_a": 305,
-      "win_rate_a": 0.7625
-    },
-    {
-      "agent_a": "DQN-mac_eng_4",
-      "agent_b": "Minimax-d2",
-      "games": 400,
-      "wins_a": 104,
-      "win_rate_a": 0.26
-    },
-    {
-      "agent_a": "DQN-mac_eng_4",
-      "agent_b": "Minimax-d3",
-      "games": 400,
-      "wins_a": 103,
-      "win_rate_a": 0.2575
-    },
-    {
-      "agent_a": "DQN-mac_eng_4",
-      "agent_b": "DQN-mac_eng_4_2",
-      "games": 400,
-      "wins_a": 201,
-      "win_rate_a": 0.5025
-    },
-    {
-      "agent_a": "DQN-mac_eng_4",
-      "agent_b": "DQN-mac_eng_5_4",
-      "games": 400,
-      "wins_a": 400,
-      "win_rate_a": 1.0
-    },
-    {
-      "agent_a": "DQN-mac_eng_4",
-      "agent_b": "DQN-mac_eng_7_4",
-      "games": 400,
-      "wins_a": 208,
-      "win_rate_a": 0.52
-    },
-    {
-      "agent_a": "DQN-mac_eng_4",
-      "agent_b": "AlphaZero",
-      "games": 400,
-      "wins_a": 0,
-      "win_rate_a": 0.0
-    },
-    {
-      "agent_a": "DQN-mac_eng_4_2",
-      "agent_b": "Minimax-d2",
-      "games": 400,
-      "wins_a": 105,
-      "win_rate_a": 0.2625
-    },
-    {
-      "agent_a": "DQN-mac_eng_4_2",
-      "agent_b": "Minimax-d3",
-      "games": 400,
-      "wins_a": 103,
-      "win_rate_a": 0.2575
-    },
-    {
-      "agent_a": "DQN-mac_eng_4_2",
-      "agent_b": "DQN-mac_eng_4",
-      "games": 400,
-      "wins_a": 199,
-      "win_rate_a": 0.4975
-    },
-    {
-      "agent_a": "DQN-mac_eng_4_2",
-      "agent_b": "DQN-mac_eng_5_4",
-      "games": 400,
-      "wins_a": 400,
-      "win_rate_a": 1.0
-    },
-    {
-      "agent_a": "DQN-mac_eng_4_2",
-      "agent_b": "DQN-mac_eng_7_4",
-      "games": 400,
-      "wins_a": 206,
-      "win_rate_a": 0.515
-    },
-    {
-      "agent_a": "DQN-mac_eng_4_2",
-      "agent_b": "AlphaZero",
-      "games": 400,
-      "wins_a": 0,
-      "win_rate_a": 0.0
-    },
-    {
-      "agent_a": "DQN-mac_eng_5_4",
-      "agent_b": "Minimax-d2",
-      "games": 400,
-      "wins_a": 200,
-      "win_rate_a": 0.5
-    },
-    {
-      "agent_a": "DQN-mac_eng_5_4",
-      "agent_b": "Minimax-d3",
-      "games": 400,
-      "wins_a": 110,
-      "win_rate_a": 0.275
-    },
-    {
-      "agent_a": "DQN-mac_eng_5_4",
-      "agent_b": "DQN-mac_eng_4",
-      "games": 400,
-      "wins_a": 0,
-      "win_rate_a": 0.0
-    },
-    {
-      "agent_a": "DQN-mac_eng_5_4",
-      "agent_b": "DQN-mac_eng_4_2",
-      "games": 400,
-      "wins_a": 0,
-      "win_rate_a": 0.0
-    },
-    {
-      "agent_a": "DQN-mac_eng_5_4",
-      "agent_b": "DQN-mac_eng_7_4",
-      "games": 400,
-      "wins_a": 192,
-      "win_rate_a": 0.48
-    },
-    {
-      "agent_a": "DQN-mac_eng_5_4",
-      "agent_b": "AlphaZero",
-      "games": 400,
-      "wins_a": 0,
-      "win_rate_a": 0.0
-    },
-    {
-      "agent_a": "DQN-mac_eng_7_4",
-      "agent_b": "Minimax-d2",
-      "games": 400,
-      "wins_a": 200,
-      "win_rate_a": 0.5
-    },
-    {
-      "agent_a": "DQN-mac_eng_7_4",
-      "agent_b": "Minimax-d3",
-      "games": 400,
-      "wins_a": 102,
-      "win_rate_a": 0.255
-    },
-    {
-      "agent_a": "DQN-mac_eng_7_4",
-      "agent_b": "DQN-mac_eng_4",
-      "games": 400,
-      "wins_a": 0,
-      "win_rate_a": 0.0
-    },
-    {
-      "agent_a": "DQN-mac_eng_7_4",
-      "agent_b": "DQN-mac_eng_4_2",
-      "games": 400,
-      "wins_a": 0,
-      "win_rate_a": 0.0
-    },
-    {
-      "agent_a": "DQN-mac_eng_7_4",
-      "agent_b": "DQN-mac_eng_5_4",
-      "games": 400,
-      "wins_a": 208,
-      "win_rate_a": 0.52
-    },
-    {
-      "agent_a": "DQN-mac_eng_7_4",
-      "agent_b": "AlphaZero",
-      "games": 400,
-      "wins_a": 200,
-      "win_rate_a": 0.5
-    },
-    {
       "agent_a": "AlphaZero",
-      "agent_b": "Minimax-d2",
-      "games": 400,
-      "wins_a": 187,
-      "win_rate_a": 0.4675
-    },
-    {
-      "agent_a": "AlphaZero",
-      "agent_b": "Minimax-d3",
-      "games": 400,
-      "wins_a": 95,
-      "win_rate_a": 0.2375
-    },
-    {
-      "agent_a": "AlphaZero",
-      "agent_b": "DQN-mac_eng_4",
-      "games": 400,
-      "wins_a": 400,
+      "agent_b": "DQN_4",
+      "games": 2,
+      "wins_a": 2,
+      "losses_a": 0,
+      "draws": 0,
       "win_rate_a": 1.0
     },
     {
       "agent_a": "AlphaZero",
-      "agent_b": "DQN-mac_eng_4_2",
-      "games": 400,
-      "wins_a": 400,
-      "win_rate_a": 1.0
-    },
-    {
-      "agent_a": "AlphaZero",
-      "agent_b": "DQN-mac_eng_5_4",
-      "games": 400,
-      "wins_a": 400,
-      "win_rate_a": 1.0
-    },
-    {
-      "agent_a": "AlphaZero",
-      "agent_b": "DQN-mac_eng_7_4",
-      "games": 400,
-      "wins_a": 200,
+      "agent_b": "DQN_7_4",
+      "games": 2,
+      "wins_a": 1,
+      "losses_a": 1,
+      "draws": 0,
       "win_rate_a": 0.5
     }
   ],
-  "total_games": 8400
+  "total_games": 4
 }
