@@ -189,7 +189,8 @@ bool moveCartesianSequence(
     const std::vector<geometry_msgs::msg::Pose> &poses,
     const std::string &name,
     rclcpp::Logger logger,
-    double min_fraction = 0.0)
+    double min_fraction = 0.0,
+    bool *was_low_fraction = nullptr)
 {
     if (poses.empty()) {
         RCLCPP_ERROR(logger, "moveCartesianSequence: empty pose list for %s", name.c_str());
@@ -207,11 +208,12 @@ bool moveCartesianSequence(
     RCLCPP_INFO(logger, "Cartesian sequence %s: %.1f%% complete (%zu waypoints)",
                 name.c_str(), fraction * 100.0, poses.size());
 
-    if (fraction < min_fraction) {
+ if (fraction < min_fraction) {
         RCLCPP_ERROR(logger,
                      "Cartesian sequence too short: %s (%.1f%% < %.0f%%) — "
                      "check IK reachability for all poses in the sequence",
                      name.c_str(), fraction * 100.0, min_fraction * 100.0);
+        if (was_low_fraction) *was_low_fraction = true; 
         return false;
     }
 
@@ -756,14 +758,65 @@ int main(int argc, char * argv[])
         //         return abort("Failed at transit waypoint");
         // }
 
+        // // ---------------------------------------------------------- //
+        // //  STEP 7 — Move to end hover
+        // // ---------------------------------------------------------- //
+        // send_feedback(gh, 0.63f, "Moving to end hover");
+        // if (!moveCartesianSequence(move_group,
+        //         { move_group.getCurrentPose().pose, end_hover },
+        //         "approach_end_hover", logger))
+        //     return abort("Failed approaching end hover");
+
         // ---------------------------------------------------------- //
         //  STEP 7 — Move to end hover
+        //  If Cartesian path fails due to low fraction (singularity),
+        //  fall back through MOVEMENT_WAYPOINT then re-approach end hover.
         // ---------------------------------------------------------- //
         send_feedback(gh, 0.63f, "Moving to end hover");
-        if (!moveCartesianSequence(move_group,
+        {
+            bool low_fraction = false;
+            bool step7_ok = moveCartesianSequence(move_group,
                 { move_group.getCurrentPose().pose, end_hover },
-                "approach_end_hover", logger))
-            return abort("Failed approaching end hover");
+                "approach_end_hover", logger, 0.95, &low_fraction);
+
+            if (!step7_ok && low_fraction) {
+                RCLCPP_WARN(logger, "Step 7 low fraction — singularity suspected, falling back via MOVEMENT_WAYPOINT");
+                move_group.clearPathConstraints();
+                if (!moveToJoints(move_group, MOVEMENT_WAYPOINT, "movement_waypoint_fallback", logger)) {
+                    moveit_msgs::msg::Constraints c;
+                    for (const auto &b : JOINT_BOUNDS) {
+                        moveit_msgs::msg::JointConstraint jc;
+                        jc.joint_name      = b.name;
+                        jc.position        = deg2rad(b.centre_deg);
+                        jc.tolerance_above = deg2rad(b.tol_deg);
+                        jc.tolerance_below = deg2rad(b.tol_deg);
+                        jc.weight          = 1.0;
+                        c.joint_constraints.push_back(jc);
+                    }
+                    move_group.setPathConstraints(c);
+                    return abort("Failed moving to MOVEMENT_WAYPOINT during Step 7 fallback");
+                }
+                {
+                    moveit_msgs::msg::Constraints c;
+                    for (const auto &b : JOINT_BOUNDS) {
+                        moveit_msgs::msg::JointConstraint jc;
+                        jc.joint_name      = b.name;
+                        jc.position        = deg2rad(b.centre_deg);
+                        jc.tolerance_above = deg2rad(b.tol_deg);
+                        jc.tolerance_below = deg2rad(b.tol_deg);
+                        jc.weight          = 1.0;
+                        c.joint_constraints.push_back(jc);
+                    }
+                    move_group.setPathConstraints(c);
+                }
+                if (!moveCartesianSequence(move_group,
+                        { move_group.getCurrentPose().pose, end_hover },
+                        "approach_end_hover_via_waypoint", logger))
+                    return abort("Failed approaching end hover even after MOVEMENT_WAYPOINT fallback");
+            } else if (!step7_ok) {
+                return abort("Failed approaching end hover");
+            }
+        }
 
         // ---------------------------------------------------------- //
         //  STEP 8 — Cartesian descent: hover → contact (end)
