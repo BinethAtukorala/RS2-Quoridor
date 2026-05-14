@@ -216,7 +216,10 @@ bool moveCartesianSequence(
         if (!moveToJoints(move_group, MOVEMENT_WAYPOINT, "movement_waypoint_recovery", logger))
             return false;
 
-        fraction = move_group.computeCartesianPath(poses, 0.005, 0.0, trajectory);
+        std::vector<geometry_msgs::msg::Pose> retry_poses = poses;
+        retry_poses[0] = move_group.getCurrentPose().pose;
+        fraction = move_group.computeCartesianPath(retry_poses, 0.005, 0.0, trajectory);
+
         RCLCPP_INFO(logger, "Cartesian retry after waypoint %s: %.1f%%", name.c_str(), fraction * 100.0);
         if (fraction < min_fraction) {
             RCLCPP_ERROR(logger, "Cartesian retry still too short: %s", name.c_str());
@@ -704,7 +707,7 @@ int main(int argc, char * argv[])
                           std::to_string(attempt) + ")");
             if (!moveCartesianSequence(move_group,
                     { start_hover, start_fixed },
-                    "hover_to_start", logger))
+                    "hover_to_start", logger, 0.0))
                 return abort("Failed Cartesian hover→contact at start");
 
             // Step 4 — Close gripper
@@ -748,7 +751,7 @@ int main(int argc, char * argv[])
         send_feedback(gh, 0.45f, "Cartesian contact → hover (start)");
         if (!moveCartesianSequence(move_group,
                 { start_fixed, start_hover },
-                "start_to_hover", logger))
+                "start_to_hover", logger, 0.0))
             return abort("Failed Cartesian contact→hover at start");
 
         // ---------------------------------------------------------- //
@@ -831,7 +834,7 @@ int main(int argc, char * argv[])
         send_feedback(gh, 0.72f, "Cartesian hover → contact (end)");
         if (!moveCartesianSequence(move_group,
                 { end_hover, end_fixed },
-                "hover_to_end", logger))
+                "hover_to_end", logger, 0.0))
             return abort("Failed Cartesian hover→contact at end");
 
         // ---------------------------------------------------------- //
@@ -846,7 +849,7 @@ int main(int argc, char * argv[])
         send_feedback(gh, 0.90f, "Cartesian contact → hover (end)");
         if (!moveCartesianSequence(move_group,
                 { end_fixed, end_hover },
-                "end_to_hover", logger))
+                "end_to_hover", logger, 0.0))
             return abort("Failed Cartesian contact→hover at end");
 
         // // ---------------------------------------------------------- //
