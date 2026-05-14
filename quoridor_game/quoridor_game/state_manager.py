@@ -239,6 +239,7 @@ class StateManager(Node):
                     '-- cannot send bot_execute goal')
                 return
             goal.piece_type = 'p'
+            self.get_logger().info(f"Sent goal start:{start_xyz} - end:{end_xyz}")
             goal.start = self._pose_from_xyz(start_xyz)
             goal.end = self._pose_from_xyz(end_xyz)
         else:
@@ -353,6 +354,7 @@ class StateManager(Node):
         self._ingest_coords_flat(self.pawn_coords_3d, msg.data, 'pawns_3d')
 
     def on_walls_3d(self, msg: Float32MultiArray):
+        self.get_logger().info(f"Walls Data: {msg.data}")
         self._ingest_coords_flat(self.wall_coords_3d, msg.data, 'walls_inside_3d')
 
     def _seed_coords_from_services(self, timeout_sec: float = 3.0):

@@ -34,8 +34,8 @@ class CameraNode(Node):
             rs.config.enable_device_from_file(self.config, bag_file, repeat_playback=True)
         else:
             self.get_logger().info("Using LIVE camera")
-            self.config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 15)
-            self.config.enable_stream(rs.stream.depth, 640, 480, rs.format.z16, 15)
+            self.config.enable_stream(rs.stream.color, 1280, 720, rs.format.bgr8, 15)
+            self.config.enable_stream(rs.stream.depth, 1280, 720, rs.format.z16, 15)
 
         self.profile = self.pipeline.start(self.config)
 
@@ -130,6 +130,11 @@ class CameraNode(Node):
 
         color = np.asanyarray(color_frame.get_data())
         depth = np.asanyarray(depth_frame.get_data())
+
+        # Center crop to 3:2 (1080x720) from 1280x720
+        x0 = (1280 - 1080) // 2
+        color = color[:, x0:x0 + 1080]
+        depth = depth[:, x0:x0 + 1080]
 
         msg_color = self.bridge.cv2_to_imgmsg(color, encoding='bgr8')
         msg_depth = self.bridge.cv2_to_imgmsg(depth, encoding='passthrough')
