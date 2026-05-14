@@ -60,7 +60,7 @@ const std::vector<std::vector<double>> WALL_PICKUP_JOINTS = {
 };
 
 // How far to retreat along tool axis for hover (metres)
-constexpr double HOVER_OFFSET_M = 0.1;
+constexpr double HOVER_OFFSET_M = 0.08;
 
 // Ground plane height in metres (robot base frame Z)
 constexpr double TABLE_Z_HEIGHT  = 0.0;
@@ -189,7 +189,7 @@ bool moveCartesianSequence(
     const std::vector<geometry_msgs::msg::Pose> &poses,
     const std::string &name,
     rclcpp::Logger logger,
-    double min_fraction = 0.0)
+    double min_fraction = 0.95)
 {
     if (poses.empty()) {
         RCLCPP_ERROR(logger, "moveCartesianSequence: empty pose list for %s", name.c_str());
