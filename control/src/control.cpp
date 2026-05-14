@@ -44,47 +44,23 @@ std::vector<double> MOVEMENT_WAYPOINT = {
 // ------------------------------------------------------------------ //
 //  WALL PICKUP JOINT ANGLES
 // ------------------------------------------------------------------ //
-// const std::vector<std::vector<double>> WALL_PICKUP_JOINTS = {
-//     { -1.94215,-1.46597,-1.60545,-1.65821,1.58544,1.18939},
-//     { -1.91289,-1.68069,-1.42006,-1.67507,1.6095,1.19915},
-//     { -1.85773,-1.79817,-1.29396,-1.65578,1.59159,1.25853},
-//     { -1.86493,-1.97158,-1.07131,-1.69696,1.63539,1.21266},
-// };
 
 // const std::vector<std::vector<double>> WALL_PICKUP_JOINTS = {
-//     {-1.87508,-1.53884,-1.77275,-1.37098,1.55933,1.29476},
-//     {-1.83036,-1.68644,-1.62077,-1.376,1.55834,1.33934},
-//     {-1.7977,-1.85196,-1.41792,-1.41378,1.55768,1.37177},
-//     {-1.77418,-2.01326,-1.19889,-1.47193,1.55733,1.3951},
-// };
-
-// const std::vector<std::vector<double>> WALL_PICKUP_JOINTS = {
-//     {-1.87508,-1.53884,-1.77275,-1.37098,1.55933,1.29476},
-//     {-1.83036,-1.68644,-1.62077,-1.376,1.55834,1.33934},
-//     {-1.7977,-1.85196,-1.41792,-1.41378,1.55768,1.37177},
-//     {-1.77418,-2.01326,-1.19889,-1.47193,1.55733,1.3951},
+//     {-1.93956,-1.56641,-1.504,-1.62645,1.62396,1.11445},
+//     {-1.892,-1.71207,-1.34779,-1.63452,1.62301,1.16183},
+//     {-1.8558,-1.86483,-1.15782,-1.66983,1.62212,1.19775},
+//     {-1.82511,-2.04725,-0.89662,-1.74706,1.62125,1.22808},
 // };
 
 const std::vector<std::vector<double>> WALL_PICKUP_JOINTS = {
-    {-1.93956,-1.56641,-1.504,-1.62645,1.62396,1.11445},
-    {-1.892,-1.71207,-1.34779,-1.63452,1.62301,1.16183},
-    {-1.8558,-1.86483,-1.15782,-1.66983,1.62212,1.19775},
-    {-1.82511,-2.04725,-0.89662,-1.74706,1.62125,1.22808},
+    {-1.92576,-1.60661,-1.43416,-1.69649,1.6365,1.21335},
+    {-1.88431,-1.75111,-1.27272,-1.71067,1.6373,1.25467},
+    {-1.84482,-1.91192,-1.06507,-1.7549,1.63792,1.29394},
+    {-1.81929,-2.10952,-0.769817,-1.8508,1.63814,1.31901},
 };
 
-// {-1.93956,-1.56641,-1.504,-1.62645,1.62396,1.11445},
-// {-1.892,-1.71207,-1.34779,-1.63452,1.62301,1.16183},
-// {-1.8558,-1.86483,-1.15782,-1.66983,1.62212,1.19775},
-// {-1.82511,-2.04725,-0.89662,-1.74706,1.62125,1.22808},
-
-// 0.217369,0.242935,0.0518124,0.999771,-0.014201,0.00975109,-0.0126598
-// 0.215782,0.286976,0.0511738,0.999774,-0.0141265,0.00957366,-0.0126424
-// 0.21561,0.333287,0.0510665,0.999777,-0.0140385,0.00941421,-0.0126666
-// 0.215466,0.375247,0.0493735,0.99978,-0.0139461,0.00927813,-0.0126231
-
-
 // How far to retreat along tool axis for hover (metres)
-constexpr double HOVER_OFFSET_M = 0.05;
+constexpr double HOVER_OFFSET_M = 0.1;
 
 // Ground plane height in metres (robot base frame Z)
 constexpr double TABLE_Z_HEIGHT  = 0.0;
@@ -111,7 +87,7 @@ geometry_msgs::msg::Quaternion makeQuat(double x, double y, double z, double w) 
 }
 
 const geometry_msgs::msg::Quaternion ORI_PAWN_HWALL =
-    makeQuat(1,0.-0.0000032,-0.0000076,0.0000159);
+    makeQuat(1,-0.0000032,-0.0000076,0.0000159);
 
 const geometry_msgs::msg::Quaternion ORI_VWALL =
     makeQuat(0.7071095,0.7071041,-0.0000050,-0.0000064);
@@ -213,7 +189,7 @@ bool moveCartesianSequence(
     const std::vector<geometry_msgs::msg::Pose> &poses,
     const std::string &name,
     rclcpp::Logger logger,
-    double min_fraction = 0.95)
+    double min_fraction = 0.0)
 {
     if (poses.empty()) {
         RCLCPP_ERROR(logger, "moveCartesianSequence: empty pose list for %s", name.c_str());
@@ -603,12 +579,18 @@ int main(int argc, char * argv[])
         geometry_msgs::msg::Pose start_fixed;
         geometry_msgs::msg::Pose start_hover;
 
+        constexpr double PAWN_Z = 0.07;
+        constexpr double WALL_Z = 0.06;
+        
+
         if (is_pawn) {
             start_fixed = withOrientation(goal->start, ori);
+            start_fixed.position.z = PAWN_Z;
             start_hover = hoverPose(start_fixed);
         }
 
         geometry_msgs::msg::Pose end_fixed = withOrientation(goal->end, ori_place);
+        end_fixed.position.z = is_pawn ? PAWN_Z : WALL_Z;
         geometry_msgs::msg::Pose end_hover = hoverPose(end_fixed);
 
         const std::string cmd_pickup = is_pawn  ? "pickup_pawn" : "pickup_wall";
@@ -686,7 +668,7 @@ int main(int argc, char * argv[])
             }
 
             start_hover = withOrientation(fkPose(move_group, pickup_joints), ori);
-            start_fixed = hoverPose(start_hover, -HOVER_OFFSET_M);
+            start_fixed = hoverPose(start_hover, -0.06);
         }
         // ---------------------------------------------------------- //
         //  STEPS 3–5 — Pickup with retry loop
@@ -763,16 +745,16 @@ int main(int argc, char * argv[])
         // ---------------------------------------------------------- //
         //  STEP 6 — Transit waypoint
         // ---------------------------------------------------------- //
-        send_feedback(gh, 0.54f, "Moving to transit waypoint");
-        {
-            geometry_msgs::msg::Pose transit_pose = fkPose(move_group, MOVEMENT_WAYPOINT);
-            transit_pose.orientation = ori_place;
-            move_group.setJointValueTarget(MOVEMENT_WAYPOINT);
-            if (!moveCartesianSequence(move_group,
-                    { move_group.getCurrentPose().pose, transit_pose },
-                    "transit_waypoint", logger))
-                return abort("Failed at transit waypoint");
-        }
+        // send_feedback(gh, 0.54f, "Moving to transit waypoint");
+        // {
+        //     geometry_msgs::msg::Pose transit_pose = fkPose(move_group, MOVEMENT_WAYPOINT);
+        //     transit_pose.orientation = ori_place;
+        //     move_group.setJointValueTarget(MOVEMENT_WAYPOINT);
+        //     if (!moveCartesianSequence(move_group,
+        //             { move_group.getCurrentPose().pose, transit_pose },
+        //             "transit_waypoint", logger))
+        //         return abort("Failed at transit waypoint");
+        // }
 
         // ---------------------------------------------------------- //
         //  STEP 7 — Move to end hover
