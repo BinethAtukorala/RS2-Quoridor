@@ -34,7 +34,8 @@ double deg2rad(double deg) { return deg * M_PI / 180.0; }
 std::vector<double> PERCEPTION_WAYPOINT = {
     // -1.32227, -1.66748, -0.218161, -2.85343, 1.54598, 0.24451
     // -1.48368,-1.47431,-0.72157,-2.45629,1.60519,0.0981183
-    -1.47639,-1.42106,-0.761994,-2.46893,1.60461,0.105417
+    // -1.47639,-1.42106,-0.761994,-2.46893,1.60461,0.105417
+    -1.47568,-1.39839,-0.711345,-2.52649,1.58345,0.104777
 };
 
 std::vector<double> MOVEMENT_WAYPOINT = {
@@ -52,12 +53,22 @@ std::vector<double> MOVEMENT_WAYPOINT = {
 //     {-1.82511,-2.04725,-0.89662,-1.74706,1.62125,1.22808},
 // };
 
+
+// BEFORE FINAL DAY OF TESTING
+// const std::vector<std::vector<double>> WALL_PICKUP_JOINTS = {
+//     {-1.92576,-1.60661,-1.43416,-1.69649,1.6365,1.21335},
+//     {-1.88431,-1.75111,-1.27272,-1.71067,1.6373,1.25467},
+//     {-1.84482,-1.91192,-1.06507,-1.7549,1.63792,1.29394},
+//     {-1.81929,-2.10952,-0.769817,-1.8508,1.63814,1.31901},
+// };
+
 const std::vector<std::vector<double>> WALL_PICKUP_JOINTS = {
-    {-1.92576,-1.60661,-1.43416,-1.69649,1.6365,1.21335},
-    {-1.88431,-1.75111,-1.27272,-1.71067,1.6373,1.25467},
-    {-1.84482,-1.91192,-1.06507,-1.7549,1.63792,1.29394},
-    {-1.81929,-2.10952,-0.769817,-1.8508,1.63814,1.31901},
+    {-1.94433,-1.62575,-1.4134,-1.69918,1.63597,1.19475},
+    {-1.90487,-1.77294,-1.24551,-1.7173,1.63691,1.23398},
+    {-1.86249,-1.9341,-1.03345,-1.76531,1.63764,1.2761},
+    {-1.85207,-2.14445,-0.712108,-1.87563,1.63758,1.28618},
 };
+
 
 // How far to retreat along tool axis for hover (metres)
 constexpr double HOVER_OFFSET_M = 0.08;
@@ -772,6 +783,7 @@ int main(int argc, char * argv[])
         //  STEP 7 — Move to end hover
         // ---------------------------------------------------------- //
         send_feedback(gh, 0.63f, "Moving to end hover");
+        RCLCPP_INFO(logger, "Step 7 end_hover: x=%.3f y=%.3f z=%.3f", end_hover.position.x, end_hover.position.y, end_hover.position.z);
         if (!moveCartesianSequence(move_group,
                 { move_group.getCurrentPose().pose, end_hover },
                 "approach_end_hover", logger))
@@ -833,8 +845,9 @@ int main(int argc, char * argv[])
         // ---------------------------------------------------------- //
         send_feedback(gh, 0.72f, "Cartesian hover → contact (end)");
         if (!moveCartesianSequence(move_group,
-                { end_hover, end_fixed },
-                "hover_to_end", logger, 0.0))
+                // { end_hover, end_fixed },
+                { move_group.getCurrentPose().pose, end_fixed },
+                "hover_to_end", logger, 0.9))
             return abort("Failed Cartesian hover→contact at end");
 
         // ---------------------------------------------------------- //

@@ -83,6 +83,9 @@ class PerceptionNode(Node):
 
     def get_ordered_corners(self, img):
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        # CLAHE normalizes local contrast so Canny thresholds aren't lighting-dependent
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+        gray = clahe.apply(gray)
         edges = cv2.Canny(cv2.GaussianBlur(gray, (5, 5), 0), 50, 150)
         contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         if not contours: return None
@@ -124,9 +127,10 @@ class PerceptionNode(Node):
                                   cv2.inRange(hsv, np.array([170,120,70]), np.array([180,255,255])))
         self.wall_circles[:] = 0
         w_in_3d = []
+        MIN_WALL_AREA = 2000  # px² — raise to reject small spurious blobs, lower if real walls get rejected
         cnts, _ = cv2.findContours(red_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         for cnt in cnts:
-            if cv2.contourArea(cnt) < 100: continue
+            if cv2.contourArea(cnt) < MIN_WALL_AREA: continue
             rx, ry, rw, rh = cv2.boundingRect(cnt)
             cx_blob, cy_blob = rx + rw//2, ry + rh//2
             c_idx, r_idx = int(round(cx_blob/100))-1, int(round(cy_blob/100))-1

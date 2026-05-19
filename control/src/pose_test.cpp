@@ -179,25 +179,38 @@ int main(int argc, char * argv[])
 
     rclcpp::sleep_for(std::chrono::seconds(2));
 
-    geometry_msgs::msg::Pose target_pose;
-    target_pose.position.x =  0.43022458;
-    target_pose.position.y = 0.09734114;
-    target_pose.position.z = 0.23432327;
-    target_pose.orientation.x = -0.50130461;
-    target_pose.orientation.y = -0.49590339;
-    target_pose.orientation.z = 0.49546997;
-    target_pose.orientation.w = 0.50723074;
+    // geometry_msgs::msg::Pose target_pose;
+    // target_pose.position.x =  0.43022458;
+    // target_pose.position.y = 0.09734114;
+    // target_pose.position.z = 0.23432327;
+    // target_pose.orientation.x = -0.50130461;
+    // target_pose.orientation.y = -0.49590339;
+    // target_pose.orientation.z = 0.49546997;
+    // target_pose.orientation.w = 0.50723074;
+    //
+    // move_group.setPoseTarget(target_pose);
+    //
+    // moveit::planning_interface::MoveGroupInterface::Plan plan;
+    // bool success = (move_group.plan(plan) == moveit::core::MoveItErrorCode::SUCCESS);
+    //
+    // if(success) {
+    //     RCLCPP_INFO(node->get_logger(), "Pose is reachable, executing move");
+    //     move_group.move();
+    // } else {
+    //     RCLCPP_WARN(node->get_logger(), "Pose is not reachable or might collide, skipping move");
+    // }
 
-    move_group.setPoseTarget(target_pose);
+    std::vector<double> joint_target = {-1.81929,-2.10952,-0.769817,-1.8508,1.63814,1.31901};
+    move_group.setJointValueTarget(joint_target);
 
     moveit::planning_interface::MoveGroupInterface::Plan plan;
     bool success = (move_group.plan(plan) == moveit::core::MoveItErrorCode::SUCCESS);
 
     if(success) {
-        RCLCPP_INFO(node->get_logger(), "Pose is reachable, executing move");
+        RCLCPP_INFO(node->get_logger(), "Joint target reachable, executing move");
         move_group.move();
     } else {
-        RCLCPP_WARN(node->get_logger(), "Pose is not reachable or might collide, skipping move");
+        RCLCPP_WARN(node->get_logger(), "Joint target not reachable or might collide, skipping move");
     }
 
     rclcpp::shutdown();

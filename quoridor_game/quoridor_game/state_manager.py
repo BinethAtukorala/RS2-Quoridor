@@ -6,6 +6,7 @@ from rclpy.action import ActionClient
 from std_msgs.msg import String, Int32MultiArray, Float32MultiArray
 from geometry_msgs.msg import Pose, Point
 from threading import Lock
+# from collections import deque, Counter
 import numpy as np
 
 from quoridor_interfaces.action import BotMove as BotMoveAction
@@ -39,6 +40,12 @@ class StateManager(Node):
         # pre-move state while the robot is physically executing.
         self.prev_applied_pawn_grid = None
         self.prev_applied_wall_grid = None
+        # # Frame-history debounce: require this many consecutive identical
+        # # frames before trusting a perception state. If the buffer fills to
+        # # VOTE_FRAMES without stabilizing, fall back to the most common state.
+        # self.PERCEPTION_CONFIRM_FRAMES = 10
+        # self.PERCEPTION_VOTE_FRAMES = 20
+        # self.perception_history = deque(maxlen=self.PERCEPTION_VOTE_FRAMES)
         self.input_mode = "perception"      # "manual" | "perception"
         self.bot_thinking = False
 
@@ -357,7 +364,7 @@ class StateManager(Node):
         self.get_logger().info(f"Walls Data: {msg.data}")
         self._ingest_coords_flat(self.wall_coords_3d, msg.data, 'walls_inside_3d')
 
-    def _seed_coords_from_services(self, timeout_sec: float = 3.0):
+    def _seed_coords_from_services(self, timeout_sec: float = 10.0):
         for client, target, label in (
             (self.get_pawns_client, self.pawn_coords_3d, '/get_pawns'),
             (self.get_walls_client, self.wall_coords_3d, '/get_walls'),
@@ -371,6 +378,7 @@ class StateManager(Node):
             if not future.done() or future.result() is None:
                 self.get_logger().warn(f'{label} service call timed out')
                 continue
+            # self.get_logger().info(f'{label} response data: {list(future.result().data)}')
             self._ingest_coords_flat(target, future.result().data, label)
             self.get_logger().info(
                 f'{label} seeded {len(target)} grid cells')
@@ -383,6 +391,7 @@ class StateManager(Node):
             self.last_applied_wall_grid = None
             self.prev_applied_pawn_grid = None
             self.prev_applied_wall_grid = None
+            # self.perception_history.clear()
 
     def _synthesize_grids_from_board(self):
         """Build pawn/wall grids that match what perception would publish for
@@ -414,6 +423,7 @@ class StateManager(Node):
             )
             self.last_applied_pawn_grid = pawn
             self.last_applied_wall_grid = wall
+            # self.perception_history.clear()
 
     def on_board_update(self, msg: Int32MultiArray):
         if self.input_mode != "perception":
@@ -450,9 +460,38 @@ class StateManager(Node):
         perception_lock. Looks for exactly one pawn move OR one wall placement
         vs. the last-applied snapshot and applies it."""
         if self.bot_executing:
+            # self.perception_history.clear()
             return  # physical motion in progress; frames are unreliable
         if self.latest_pawn_grid is None or self.latest_wall_grid is None:
             return  # wait until we've seen at least one of each
+
+        # # Append current frame to rolling history (bytes are hashable for vote)
+        # pair = (self.latest_pawn_grid.tobytes(), self.latest_wall_grid.tobytes())
+        # self.perception_history.append(pair)
+
+        # # Decide confirmed state: last N frames all agree, OR buffer is full
+        # # and we fall back to majority vote.
+        # confirmed = None
+        # if len(self.perception_history) >= self.PERCEPTION_CONFIRM_FRAMES:
+        #     tail = list(self.perception_history)[-self.PERCEPTION_CONFIRM_FRAMES:]
+        #     if all(p == tail[0] for p in tail):
+        #         confirmed = tail[0]
+        #     elif len(self.perception_history) >= self.PERCEPTION_VOTE_FRAMES:
+        #         confirmed, votes = Counter(self.perception_history).most_common(1)[0]
+        #         self.get_logger().warn(
+        #             f'Perception unstable for {self.PERCEPTION_VOTE_FRAMES} frames '
+        #             f'-- committing majority state ({votes}/{self.PERCEPTION_VOTE_FRAMES})')
+        # if confirmed is None:
+        #     return  # keep waiting / collecting frames
+
+        # # Rehydrate confirmed grids and use them in place of latest_*
+        # pawn_dtype, pawn_shape = self.latest_pawn_grid.dtype, self.latest_pawn_grid.shape
+        # wall_dtype, wall_shape = self.latest_wall_grid.dtype, self.latest_wall_grid.shape
+        # confirmed_pawn = np.frombuffer(confirmed[0], dtype=pawn_dtype).reshape(pawn_shape).copy()
+        # confirmed_wall = np.frombuffer(confirmed[1], dtype=wall_dtype).reshape(wall_shape).copy()
+        # # Diff helpers read self.latest_* — point them at the confirmed grids.
+        # self.latest_pawn_grid = confirmed_pawn
+        # self.latest_wall_grid = confirmed_wall
 
         # First time both are available: baseline and return.
         if self.last_applied_pawn_grid is None or self.last_applied_wall_grid is None:
@@ -503,6 +542,7 @@ class StateManager(Node):
         self.last_applied_pawn_grid = pawn
         self.last_applied_wall_grid = wall
 
+        # self.perception_history.clear()
         self.get_logger().info(f'Perception: {who} {description}')
         self.publish_board_state()
 
