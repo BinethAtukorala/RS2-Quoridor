@@ -91,12 +91,12 @@
             (ROS 2) package: the neural network, the search algorithm, and the training pipeline.
           </p>
           <p>
-            Quoridor is a perfect-information two-player game with a branching factor that punishes
-            shallow heuristics. We replaced an earlier Deep Q-Network (DQN) baseline with an AlphaZero-style approach:
+            Quoridor is a perfect-information two-player game with a branching factor that rewards
+            strong planning. We replaced an earlier Deep Q-Network (DQN) baseline with Google's AlphaZero-style approach:
             a single network with a <em>policy head</em> and a <em>value head</em>, trained on data
             produced by Monte Carlo Tree Search that uses the same network as the leaf evaluator.
-            The network bootstraps off a search that is itself guided by the network - a virtuous
-            circle that, unlike DQN, handles the two-player setting natively.
+            The network initiates a search that is itself guided by the network. This configuration, unlike DQN, 
+            handles the two-player setting natively.
           </p>
         </div>
 
@@ -131,7 +131,7 @@
       <div class="column is-half reveal" style="--delay:0.1s">
         <figure class="board-figure">
           <img src="./static/assets/board_thinking_path.png" alt="QuorZero MCTS thinking path visualised on the board">
-          <figcaption>QuorZero "thinking" - the MCTS-preferred path overlaid on the board after search.</figcaption>
+          <figcaption>QuorZero thinking visualisation - the MCTS-preferred path overlaid on the board after search.</figcaption>
         </figure>
       </div>
     </div>
@@ -213,19 +213,19 @@
           <h3 class="title is-4">Why AlphaZero, not DQN?</h3>
           <p>
             DQN was designed for single-agent environments. In a two-player game, the Bellman
-            bootstrap <code>r + γ·max Q(s', a)</code> conflates "my move quality" with
+            bootstrap <code>r + γ·max Q(s', a)</code> confuses "my move quality" with
             "my opponent's reply quality" because <code>s'</code> is the state <em>after</em>
-            the opponent moves. This produces reoccuring issues in self-play: mutual stalling,
+            the opponent moves. This produces reoccuring issues in self-play such as mutual stalling,
             oscillating policies, overfitted learning.
           </p>
           <p>AlphaZero handles two players natively:</p>
           <ul>
             <li>The <strong>value head</strong> is trained against the actual game outcome
-              <code>z ∈ {−1, 0, +1}</code> - no bootstrap, no temporal-difference (TD) noise.</li>
+              <code>z ∈ {−1, 0, +1}</code>.</li>
             <li>The <strong>policy head</strong> is trained against the MCTS visit-count
               distribution, a strictly stronger signal than the network's own best guess.</li>
             <li><strong>Dual side learning</strong> in MCTS flips the sign of value at
-              every level: what's good for the child is bad for the parent, helping it to learn how to attack <em>and</em> defend.</li>
+              every level. What's good for the child is bad for the parent, helping it to learn how to attack <em>and</em> defend.</li>
           </ul>
         </div>
       </div>
@@ -237,7 +237,7 @@
         <div class="content">
           <p>
             Each self-play game uses MCTS for <em>both</em> sides, with the AlphaZero variant of tree
-            search known as PUCT (Predictor + Upper-Confidence Tree). After every move the visit-count
+            search known as PUCT (Predictor + Upper-Confidence Tree). After every move the visit count
             distribution π is recorded alongside the state. When the game ends, the outcome
             <code>z</code> is stamped back onto every sample, and the triples <code>(s, π, z)</code>
             are pushed into a circular replay buffer. A small number of Adam (Adaptive Moment
@@ -268,9 +268,9 @@ push every (state, π, z) into ReplayBuffer</pre>
         <h3 class="title is-4">Training objective</h3>
         <div class="content">
           <p>
-            The <strong>policy head</strong> is trained to imitate MCTS's visit-count
+            The <strong>policy head</strong> is trained to imitate MCTS's visit count
             distribution over moves, and the <strong>value head</strong> is trained to
-            predict the eventual game outcome <code>z ∈ {−1, 0, +1}</code>. Because the
+            predict the eventual game outcome <code>z ∈ {-1, 0, +1}</code>. Because the
             same network is the evaluator inside MCTS, every training step makes the
             search sharper, which produces better data for the next step. This results in the network continously getting better.
           </p>
@@ -401,7 +401,7 @@ push every (state, π, z) into ReplayBuffer</pre>
       <div class="column is-half reveal" style="--delay:0.2s">
         <div class="metric-card">
           <h4>game/avg_length_50</h4>
-          <p class="metric-range">15 – 35 plies</p>
+          <p class="metric-range">15 - 35 plies</p>
           <p>Indicates decisive games. Pinned at <code>--max-plies</code> means search is too weak to find winning lines.</p>
         </div>
       </div>
@@ -418,13 +418,13 @@ push every (state, π, z) into ReplayBuffer</pre>
       <div class="column is-half reveal" style="--delay:0.0s">
         <figure class="board-figure">
           <img src="./static/assets/lossvaluestensorboard.png" alt="TensorBoard policy and value losses over training">
-          <figcaption>Loss curves — policy and value losses dropping over the course of training.</figcaption>
+          <figcaption>Loss curves, policy and value losses dropping over the course of training.</figcaption>
         </figure>
       </div>
       <div class="column is-half reveal" style="--delay:0.1s">
         <figure class="board-figure">
           <img src="./static/assets/gamedatatensorboard.png" alt="TensorBoard game-statistics dashboard">
-          <figcaption>Game stats — average length, win rates, and decisive-game rate per 50-game window.</figcaption>
+          <figcaption>Game stats, average length, win rates, and decisive-game rate per 50-game window.</figcaption>
         </figure>
       </div>
     </div>
@@ -464,28 +464,28 @@ push every (state, π, z) into ReplayBuffer</pre>
         <div class="metric-card">
           <h4>vs Minimax-d2</h4>
           <p class="metric-range">27 / 50 wins &middot; 54%</p>
-          <p>Edges out the shallow minimax baseline. Wins 14 of 25 as first player, 13 of 25 as second player &mdash; effectively neutral on side selection.</p>
+          <p>Edges out the shallow minimax baseline. Wins 14 of 25 as first player, 13 of 25 as second player. Effectively neutral on side selection.</p>
         </div>
       </div>
       <div class="column is-half reveal" style="--delay:0.2s">
         <div class="metric-card">
           <h4>vs Minimax-d3</h4>
           <p class="metric-range">14 / 50 wins &middot; 28%</p>
-          <p>The deep minimax remains stronger overall, but QuorZero takes 14 of 25 games when it moves first &mdash; matching the deeper search when it has the initiative.</p>
+          <p>The deep minimax remains stronger overall, but QuorZero takes 14 of 25 games when it moves first. Matching the deeper search when it has the initiative.</p>
         </div>
       </div>
       <div class="column is-half reveal" style="--delay:0.25s">
         <div class="metric-card">
           <h4>vs DQN_4</h4>
           <p class="metric-range">50 / 50 wins &middot; 100%</p>
-          <p>Sweeps the original Deep Q-Network model. Never loses a game in either seat.</p>
+          <p>Fully defeats the original Deep Q-Network model. Did not lose a game in either seat.</p>
         </div>
       </div>
       <div class="column is-half reveal" style="--delay:0.3s">
         <div class="metric-card">
           <h4>vs DQN_4_2</h4>
           <p class="metric-range">50 / 50 wins &middot; 100%</p>
-          <p>Same outcome against the retrained Deep Q-Network checkpoint &mdash; 25 wins as first player, 25 as second.</p>
+          <p>Same outcome against the retrained Deep Q-Network checkpoint. 25 wins as first player, 25 as second.</p>
         </div>
       </div>
       <div class="column is-half is-offset-one-quarter reveal" style="--delay:0.35s">
