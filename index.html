@@ -27,9 +27,10 @@
     <div class="navbar-end">
       <a class="navbar-item" href="#overview">Overview</a>
       <a class="navbar-item" href="#team">Team</a>
+      <a class="navbar-item" href="#demo">Demonstration</a>
       <a class="navbar-item" href="#approach">Approach</a>
       <a class="navbar-item" href="#results">Results</a>
-      <a class="navbar-item" href="#video">Video</a>
+      <a class="navbar-item" href="#benchmarks">Benchmarks</a>
       <a class="navbar-item" href="#code">Code</a>
     </div>
   </div>
@@ -55,9 +56,9 @@
           </a>
         </span>
         <span class="link-block">
-          <a href="#video" class="external-link button is-rounded is-dark">
+          <a href="#demo" class="external-link button is-rounded is-dark">
             <span class="icon"><i class="fab fa-youtube"></i></span>
-            <span>Video</span>
+            <span>Demo</span>
           </a>
         </span>
         <span class="link-block">
@@ -174,6 +175,28 @@
             and a minimax engine, and analysed the resulting win-rate / game-length statistics.
           </p>
         </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ VIDEO ============ -->
+<section class="section section-alt" id="demo">
+  <div class="container is-max-desktop">
+    <h2 class="title is-3 has-text-centered reveal">Demonstration</h2>
+    <div class="columns is-centered">
+      <div class="column is-four-fifths reveal" style="--delay:0.1s">
+        <div class="publication-video">
+          <iframe src="https://www.youtube.com/embed/dQw4w9WgXcQ?si=Pz4tE0WhoOoEzvzu"
+                  title="QuorZero final demonstration (placeholder)"
+                  frameborder="0"
+                  allow="autoplay; encrypted-media; picture-in-picture"
+                  referrerPolicy="strict-origin-when-cross-origin"
+                  allowfullscreen></iframe>
+        </div>
+        <p class="has-text-centered" style="margin-top: 0.75rem; opacity: 0.7;">
+          <em>Project introduction and live gameplay between a human and the AI.</em>
+        </p>
       </div>
     </div>
   </div>
@@ -408,23 +431,69 @@ push every (state, π, z) into ReplayBuffer</pre>
   </div>
 </section>
 
-<!-- ============ VIDEO ============ -->
-<section class="section" id="video">
+<!-- ============ BENCHMARKS ============ -->
+<section class="section" id="benchmarks">
   <div class="container is-max-desktop">
-    <h2 class="title is-3 has-text-centered reveal">Final Demonstration</h2>
-    <div class="columns is-centered">
-      <div class="column is-four-fifths reveal" style="--delay:0.1s">
-        <div class="publication-video">
-          <iframe src="https://www.youtube.com/embed/dQw4w9WgXcQ?si=Pz4tE0WhoOoEzvzu"
-                  title="QuorZero final demonstration (placeholder)"
-                  frameborder="0"
-                  allow="autoplay; encrypted-media; picture-in-picture"
-                  referrerPolicy="strict-origin-when-cross-origin"
-                  allowfullscreen></iframe>
+    <h2 class="title is-3 has-text-centered reveal">Benchmark Results</h2>
+    <p class="has-text-centered reveal" style="--delay:0.05s; margin-bottom: 2rem; color: var(--muted-soft);">
+      QuorZero played 50 games against each of five baselines, 25 as first player
+      and 25 as second player, for a total of 250 head-to-head matches.
+    </p>
+
+    <div class="stat-grid reveal" style="--delay:0.1s; margin-bottom: 2.5rem;">
+      <div class="stat-card">
+        <div class="stat-num">76.4%</div>
+        <div class="stat-label">overall win rate (191 / 250)</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-num">150 / 150</div>
+        <div class="stat-label">vs every Deep Q-Network variant</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-num">~820 ms</div>
+        <div class="stat-label">avg time per move (400 simulations)</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-num">0</div>
+        <div class="stat-label">draws produced</div>
+      </div>
+    </div>
+
+    <div class="columns is-multiline">
+      <div class="column is-half reveal" style="--delay:0.15s">
+        <div class="metric-card">
+          <h4>vs Minimax-d2</h4>
+          <p class="metric-range">27 / 50 wins &middot; 54%</p>
+          <p>Edges out the shallow minimax baseline. Wins 14 of 25 as first player, 13 of 25 as second player &mdash; effectively neutral on side selection.</p>
         </div>
-        <p class="has-text-centered" style="margin-top: 0.75rem; opacity: 0.7;">
-          <em>Live gameplay between a human and the AI.</em>
-        </p>
+      </div>
+      <div class="column is-half reveal" style="--delay:0.2s">
+        <div class="metric-card">
+          <h4>vs Minimax-d3</h4>
+          <p class="metric-range">14 / 50 wins &middot; 28%</p>
+          <p>The deep minimax remains stronger overall, but QuorZero takes 14 of 25 games when it moves first &mdash; matching the deeper search when it has the initiative.</p>
+        </div>
+      </div>
+      <div class="column is-half reveal" style="--delay:0.25s">
+        <div class="metric-card">
+          <h4>vs DQN_4</h4>
+          <p class="metric-range">50 / 50 wins &middot; 100%</p>
+          <p>Sweeps the original Deep Q-Network model. Never loses a game in either seat.</p>
+        </div>
+      </div>
+      <div class="column is-half reveal" style="--delay:0.3s">
+        <div class="metric-card">
+          <h4>vs DQN_4_2</h4>
+          <p class="metric-range">50 / 50 wins &middot; 100%</p>
+          <p>Same outcome against the retrained Deep Q-Network checkpoint &mdash; 25 wins as first player, 25 as second.</p>
+        </div>
+      </div>
+      <div class="column is-half is-offset-one-quarter reveal" style="--delay:0.35s">
+        <div class="metric-card">
+          <h4>vs DQN_5_4</h4>
+          <p class="metric-range">50 / 50 wins &middot; 100%</p>
+          <p>Third Deep Q-Network variant, same result. QuorZero is 150 / 150 across all three Deep Q-Network engines combined.</p>
+        </div>
       </div>
     </div>
   </div>

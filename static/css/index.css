@@ -358,7 +358,7 @@ code {
   width: 100%;
   max-width: 920px;
   height: auto;
-  background: linear-gradient(180deg, rgba(255,252,244,0.55), rgba(250,240,220,0.30));
+  background: #ffffff;
   border: 1px solid var(--border);
   border-radius: 14px;
   padding: 1.25rem;
