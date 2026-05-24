@@ -1,0 +1,7 @@
+agent_a,agent_b,games,wins_a,losses_a,draws,win_rate_a
+Engine-d3,Engine-d1,60,30,30,0,0.5000
+Engine-d3,Random,60,58,1,1,0.9667
+Engine-d1,Engine-d3,60,30,30,0,0.5000
+Engine-d1,Random,60,60,0,0,1.0000
+Random,Engine-d3,60,1,58,1,0.0167
+Random,Engine-d1,60,0,60,0,0.0000

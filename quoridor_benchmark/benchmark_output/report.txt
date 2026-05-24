@@ -1,0 +1,46 @@
+======================================================================
+  QUORIDOR AI BENCHMARK REPORT
+======================================================================
+  Board: 5×5   Games/pair: 30   Total games: 180
+
+  OVERALL RANKING  (by Elo)
+  ------------------------------------------------------------------
+  Rank  Agent                      Elo Rating         Win%     W     L     D  Ill
+  ------------------------------------------------------------------
+  1     Engine-d1               1822.0 ★★★★★        75.0%    90    30     0    0
+  2     Engine-d3               1536.1 ★★★☆☆        73.3%    88    31     1    0
+  3     Random                  1141.9 ★☆☆☆☆         0.8%     1   118     1    0
+
+  PER-AGENT STATS
+  ------------------------------------------------------------------
+  Engine-d1
+    Win rate : ███████████████░░░░░  75.0%
+    Elo      : 1822.0  ★★★★★
+    Avg plies: 12.5
+    Move time: avg 2.8 ms   max 8 ms
+
+  Engine-d3
+    Win rate : ███████████████░░░░░  73.3%
+    Elo      : 1536.1  ★★★☆☆
+    Avg plies: 17.8
+    Move time: avg 85.1 ms   max 442 ms
+
+  Random
+    Win rate : ░░░░░░░░░░░░░░░░░░░░  0.8%
+    Elo      : 1141.9  ★☆☆☆☆
+    Avg plies: 16.3
+    Move time: avg 0.0 ms   max 0 ms
+
+  HEAD-TO-HEAD WIN RATES  (row agent vs column agent)
+  ------------------------------------------------------------
+                           Engine-d3   Engine-d1      Random
+  Engine-d3                        —      50.0%       96.7% 
+  Engine-d1                   50.0%            —     100.0% 
+  Random                       1.7%        0.0%            —
+
+  GAME EXTREMES
+    Shortest: 5 plies  (Random vs Engine-d1 → player wins)
+    Longest : 150 plies  (Random vs Engine-d3 → draw wins)
+    Draws/timeouts: 1  (0.6%)
+
+======================================================================

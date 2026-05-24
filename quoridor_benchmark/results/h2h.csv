@@ -1,0 +1,3 @@
+agent_a,agent_b,games,wins_a,losses_a,draws,win_rate_a
+AlphaZero,DQN_4,2,2,0,0,1.0000
+AlphaZero,DQN_7_4,2,1,1,0,0.5000

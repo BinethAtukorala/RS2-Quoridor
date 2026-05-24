@@ -1,0 +1,11 @@
+# Request
+# piece_type: 'p' = pawn, 'h' = horizontal wall, 'v' = vertical wall
+string piece_type
+geometry_msgs/Pose start
+geometry_msgs/Pose end
+---
+# Result
+bool result
+---
+# Feedback
+float32 progress

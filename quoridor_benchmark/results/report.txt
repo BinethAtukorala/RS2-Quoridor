@@ -1,0 +1,41 @@
+  QUORIDOR AI BENCHMARK REPORT
+  Board: 5x5   Games/pair: 3   Total games: 4
+
+  OVERALL RANKING  (by Win Rate, draws excluded from denominator)
+  ------------------------------------------------------------------
+  Rank  Agent                          Win%      W      L      D     GP
+  ------------------------------------------------------------------
+  1     AlphaZero                    75.0%      3      1      0      4
+  2     DQN_7_4                      50.0%      1      1      0      2
+  3     DQN_4                         0.0%      0      2      0      2
+
+  PER-AGENT STATS
+  AlphaZero
+    Win rate : 75.0%  (draws excluded from denominator)
+    Record   : 3W / 1L / 0D  (4 games played)
+    Avg plies: 21.2
+    Move time: avg 818.2 ms   max 1226 ms
+
+  DQN_7_4
+    Win rate : 50.0%  (draws excluded from denominator)
+    Record   : 1W / 1L / 0D  (2 games played)
+    Avg plies: 19.0
+    Move time: avg 13.2 ms   max 14 ms
+
+  DQN_4
+    Win rate : 0.0%  (draws excluded from denominator)
+    Record   : 0W / 2L / 0D  (2 games played)
+    Avg plies: 23.5
+    Move time: avg 14.7 ms   max 48 ms
+
+  HEAD-TO-HEAD WIN RATES  (symmetric, draws excluded from denominator)
+  ------------------------------------------------------------
+                               DQN_4     DQN_7_4   AlphaZero
+  DQN_4                            —           —       0.0% 
+  DQN_7_4                          —           —      50.0% 
+  AlphaZero                  100.0%       50.0%            —
+
+  GAME EXTREMES
+    Shortest: 19 plies  (AlphaZero vs DQN_7_4 -> bot wins)
+    Longest : 24 plies  (AlphaZero vs DQN_4 -> bot wins)
+    Draws/timeouts: 0  (0.0%)

@@ -1,0 +1,96 @@
+{
+  "config": {
+    "games_per_pair": 30,
+    "board_n": 5,
+    "max_plies": 150,
+    "seed": 42,
+    "elo_k": 32.0,
+    "elo_base": 1500.0
+  },
+  "ranking": [
+    {
+      "rank": 1,
+      "name": "Engine-d1",
+      "elo": 1821.98,
+      "win_rate": 0.75,
+      "wins": 90,
+      "losses": 30,
+      "draws": 0,
+      "illegal_moves": 0,
+      "avg_plies": 12.5,
+      "avg_move_ms": 2.77,
+      "max_move_ms": 8.15
+    },
+    {
+      "rank": 2,
+      "name": "Engine-d3",
+      "elo": 1536.09,
+      "win_rate": 0.7333,
+      "wins": 88,
+      "losses": 31,
+      "draws": 1,
+      "illegal_moves": 0,
+      "avg_plies": 17.8,
+      "avg_move_ms": 85.12,
+      "max_move_ms": 441.94
+    },
+    {
+      "rank": 3,
+      "name": "Random",
+      "elo": 1141.93,
+      "win_rate": 0.0083,
+      "wins": 1,
+      "losses": 118,
+      "draws": 1,
+      "illegal_moves": 0,
+      "avg_plies": 16.3,
+      "avg_move_ms": 0.03,
+      "max_move_ms": 0.27
+    }
+  ],
+  "head_to_head": [
+    {
+      "agent_a": "Engine-d3",
+      "agent_b": "Engine-d1",
+      "games": 60,
+      "wins_a": 30,
+      "win_rate_a": 0.5
+    },
+    {
+      "agent_a": "Engine-d3",
+      "agent_b": "Random",
+      "games": 60,
+      "wins_a": 58,
+      "win_rate_a": 0.9667
+    },
+    {
+      "agent_a": "Engine-d1",
+      "agent_b": "Engine-d3",
+      "games": 60,
+      "wins_a": 30,
+      "win_rate_a": 0.5
+    },
+    {
+      "agent_a": "Engine-d1",
+      "agent_b": "Random",
+      "games": 60,
+      "wins_a": 60,
+      "win_rate_a": 1.0
+    },
+    {
+      "agent_a": "Random",
+      "agent_b": "Engine-d3",
+      "games": 60,
+      "wins_a": 1,
+      "win_rate_a": 0.0167
+    },
+    {
+      "agent_a": "Random",
+      "agent_b": "Engine-d1",
+      "games": 60,
+      "wins_a": 0,
+      "win_rate_a": 0.0
+    }
+  ],
+  "total_games": 180
+}

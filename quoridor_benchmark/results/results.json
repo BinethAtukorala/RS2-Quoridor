@@ -1,0 +1,69 @@
+{
+  "config": {
+    "games_per_pair": 3,
+    "board_n": 5,
+    "max_plies": 150,
+    "seed": 42,
+    "elo_k": 32.0,
+    "elo_base": 1500.0
+  },
+  "ranking": [
+    {
+      "rank": 1,
+      "name": "AlphaZero",
+      "win_rate": 0.75,
+      "wins": 3,
+      "losses": 1,
+      "draws": 0,
+      "total_games": 4,
+      "avg_plies": 21.2,
+      "avg_move_ms": 818.18,
+      "max_move_ms": 1225.65
+    },
+    {
+      "rank": 2,
+      "name": "DQN_7_4",
+      "win_rate": 0.5,
+      "wins": 1,
+      "losses": 1,
+      "draws": 0,
+      "total_games": 2,
+      "avg_plies": 19.0,
+      "avg_move_ms": 13.21,
+      "max_move_ms": 14.1
+    },
+    {
+      "rank": 3,
+      "name": "DQN_4",
+      "win_rate": 0.0,
+      "wins": 0,
+      "losses": 2,
+      "draws": 0,
+      "total_games": 2,
+      "avg_plies": 23.5,
+      "avg_move_ms": 14.66,
+      "max_move_ms": 48.2
+    }
+  ],
+  "head_to_head": [
+    {
+      "agent_a": "AlphaZero",
+      "agent_b": "DQN_4",
+      "games": 2,
+      "wins_a": 2,
+      "losses_a": 0,
+      "draws": 0,
+      "win_rate_a": 1.0
+    },
+    {
+      "agent_a": "AlphaZero",
+      "agent_b": "DQN_7_4",
+      "games": 2,
+      "wins_a": 1,
+      "losses_a": 1,
+      "draws": 0,
+      "win_rate_a": 0.5
+    }
+  ],
+  "total_games": 4
+}
