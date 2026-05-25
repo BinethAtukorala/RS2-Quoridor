@@ -723,6 +723,199 @@ source install/setup.bash</pre>
 
     </div><!-- /panel-perception -->
 
+
+    <!-- ====== MOTION CONTROL PANEL ====== -->
+    <div id="panel-motion" style="display:none">
+
+      <div class="columns is-centered has-text-centered">
+        <div class="column is-four-fifths">
+          <div class="content has-text-justified reveal" style="--delay:0.15s">
+            <p>
+              The motion planning and control subsystem is the physical execution layer of the system.
+              It receives a piece type (<code>p</code>, <code>h</code>, or <code>v</code>) and start/end
+              poses from game logic, then carries out the full pick-and-place pipeline using the
+              <strong>UR3e robotic arm</strong>, <strong>MoveIt</strong> for trajectory planning, and an
+              <strong>OnRobot RG2 gripper</strong> controlled by a dedicated node.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Two nodes -->
+      <h3 class="title is-4 has-text-centered reveal" style="margin-top:2rem; --delay:0.2s">Key Nodes</h3>
+      <div class="columns reveal" style="--delay:0.25s">
+        <div class="column is-half">
+          <div class="metric-card">
+            <h4><code>control</code> (control.cpp)</h4>
+            <p>Main action server on <code>/quoridor/bot_execute</code>. Receives a <code>BotMove</code> action goal and executes the full 11-step pick-and-place sequence: perception waypoint → pickup hover → Cartesian descent → grip → ascent → transit → drop hover → Cartesian descent → release → ascent → return to perception waypoint. Retries failed grasps up to 3 times before aborting.</p>
+          </div>
+        </div>
+        <div class="column is-half">
+          <div class="metric-card">
+            <h4><code>gripper</code> (gripper.cpp)</h4>
+            <p>Standalone gripper command node. Subscribes to <code>/gripper/command</code> and accepts <code>open</code>, <code>close</code>, <code>pickup_pawn</code>, <code>pickup_wall</code>, <code>drop_pawn</code>, <code>drop_wall</code>. Performs stall-detection during pickup (stops closing immediately on contact) and validates the held object width against expected values — pawn ~24 mm, wall ~17 mm — before publishing <code>success</code>, <code>fail</code>, or <code>wrong</code> to <code>/gripper/status</code>.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Execution sequence -->
+      <h3 class="title is-4 has-text-centered reveal" style="margin-top:2.5rem; --delay:0.3s">Pick-and-Place Execution Sequence</h3>
+      <div class="columns is-vcentered reveal" style="--delay:0.35s">
+        <div class="column is-half">
+          <div class="content has-text-justified">
+            <p>Every bot move executes the same 11-step sequence. Cartesian paths are used for all contact-zone motions to guarantee straight-line tool trajectories; free-space transits use joint-space planning through MoveIt.</p>
+            <p>Wall pickups are special-cased: workspace joint constraints (which keep the arm above the board) are cleared before moving to the wall rack, then re-applied immediately after — ensuring safe motion both on and off the board.</p>
+            <p>After every move, the arm returns to the <strong>perception waypoint</strong> and waits up to 3 seconds for a fresh board-state message before declaring success. If the board is not detected, the robot snaps to the exact joint angles again to correct any drift.</p>
+          </div>
+        </div>
+        <div class="column is-half">
+<pre class="code-card" style="font-size:0.78rem">
+Step 1  → Perception waypoint (first move)
+         + verify board_state received
+
+Step 2P → Cartesian to start hover (pawn)
+Step 2W → Joint move to wall rack slot (wall)
+
+Step 3  → Cartesian descent: hover → contact
+Step 4  → publishGripperCommand("pickup_*")
+          retry up to MAX_PICKUP_RETRIES=3
+
+Step 5  → Cartesian ascent: contact → hover
+Step 6  → (transit waypoint — optional)
+Step 7  → Cartesian to end hover
+Step 8  → Cartesian descent: hover → contact
+Step 9  → publishGripperCommand("drop_*")
+Step 10 → Cartesian ascent: contact → hover
+Step 11 → Cartesian transit + joint snap
+          → perception waypoint
+          → verify board detection
+</pre>
+        </div>
+      </div>
+
+      <!-- Gripper stall detection -->
+      <h3 class="title is-4 has-text-centered reveal" style="margin-top:2.5rem; --delay:0.4s">Gripper Stall Detection</h3>
+      <div class="columns is-vcentered reveal" style="--delay:0.45s">
+        <div class="column is-half">
+<pre class="code-card" style="font-size:0.78rem">
+// gripper.cpp — tickPickupClose()
+if (stall_detection_active) {          // width < 15 mm
+    diff = |current_width - prev_width|
+    if diff < 0.0005: stable_count++
+    else:             stable_count = 0
+
+    if stable_count >= 5:              // stalled!
+        hold at current_width
+        evaluatePickup()               // success / fail / wrong
+        return
+}
+// step gripper closed 1 mm per tick
+sent_command -= pickup_step_           // 0.001 m
+
+// evaluatePickup():
+// |width - expected| ≤ 0.005 → success
+// width < 0.005              → fail (nothing)
+// else                       → wrong object
+</pre>
+        </div>
+        <div class="column is-half">
+          <div class="content has-text-justified">
+            <p>The gripper closes in 1 mm increments at 20 Hz. Once the finger width drops below 15 mm, stall detection activates: if the measured width stops changing for 5 consecutive ticks (~250 ms), the gripper has made contact and stops closing immediately — preventing over-gripping.</p>
+            <p>The final width is compared against the expected object widths to classify the outcome. A <code>drop</code> command is blocked if the held-object width differs from the expected by more than 4× the tolerance, preventing the robot from placing a wrong piece.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Safety & constraints -->
+      <h3 class="title is-4 has-text-centered reveal" style="margin-top:2.5rem; --delay:0.5s">Safety &amp; Workspace Constraints</h3>
+      <div class="columns is-multiline reveal" style="--delay:0.55s">
+        <div class="column is-one-third">
+          <div class="metric-card">
+            <h4>Ground Plane</h4>
+            <p>A 3×3 m collision box is added to the MoveIt planning scene at table height, preventing the robot from planning any trajectory that would drive the end-effector into the table surface.</p>
+          </div>
+        </div>
+        <div class="column is-one-third">
+          <div class="metric-card">
+            <h4>Joint Constraints</h4>
+            <p>Three shoulder and elbow joints are bounded via <code>JOINT_BOUNDS</code> to keep the arm above the board during all board-zone motions. Constraints are selectively cleared only when reaching the wall rack, which sits outside this region.</p>
+          </div>
+        </div>
+        <div class="column is-one-third">
+          <div class="metric-card">
+            <h4>Cartesian Minimum Fraction</h4>
+            <p>All contact-zone Cartesian paths require ≥95% coverage. If a path falls short, the node falls back through <code>MOVEMENT_WAYPOINT</code> and retries — avoiding the need to abort the entire move on a planning hiccup.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Motion: Code & Installation -->
+      <h3 class="title is-4 has-text-centered reveal" style="margin-top:2.5rem; --delay:0.6s">Code &amp; Installation</h3>
+      <div class="columns is-centered">
+        <div class="column is-four-fifths">
+          <div class="content reveal" style="--delay:0.65s">
+            <p>The motion planning and control subsystem lives in the <code>control</code> ROS 2 package. The UR robot driver and MoveIt must be running before the control node is launched.</p>
+          </div>
+
+          <h4 class="title is-5 reveal" style="--delay:0.68s">Step 1 — Build</h4>
+<pre class="code-card reveal" style="--delay:0.70s">cd ~/rs2_ws
+colcon build --packages-select control
+source install/setup.bash</pre>
+
+          <h4 class="title is-5 reveal" style="--delay:0.73s">Step 2 — Launch robot driver</h4>
+<pre class="code-card reveal" style="--delay:0.75s">ros2 launch ur_onrobot_control start_robot.launch.py \
+    ur_type:=ur3e \
+    onrobot_type:=rg2 \
+    robot_ip:=192.168.0.194</pre>
+          <p class="reveal" style="--delay:0.76s; margin-bottom:1.5rem; color:var(--muted-soft);"><em>Wait until the terminal confirms the robot is ready to receive commands.</em></p>
+
+          <h4 class="title is-5 reveal" style="--delay:0.78s">Step 3 — Launch MoveIt</h4>
+<pre class="code-card reveal" style="--delay:0.80s">ros2 launch ur_onrobot_moveit_config ur_onrobot_moveit.launch.py \
+    ur_type:=ur3e \
+    onrobot_type:=rg2</pre>
+          <p class="reveal" style="--delay:0.81s; margin-bottom:1.5rem; color:var(--muted-soft);"><em>Wait until RViz opens and the robot model loads without errors.</em></p>
+
+          <h4 class="title is-5 reveal" style="--delay:0.83s">Step 4 — Launch control node</h4>
+<pre class="code-card reveal" style="--delay:0.85s">ros2 run control control</pre>
+          <p class="reveal" style="--delay:0.86s; margin-bottom:1.5rem; color:var(--muted-soft);"><em>Moves to the perception waypoint on startup and waits for board detection before declaring ready on <code>/quoridor/bot_execute</code>.</em></p>
+
+          <h4 class="title is-5 reveal" style="--delay:0.88s">Step 5 — Launch gripper node</h4>
+<pre class="code-card reveal" style="--delay:0.90s">ros2 run control gripper</pre>
+          <p class="reveal" style="--delay:0.91s; margin-bottom:1.5rem; color:var(--muted-soft);"><em>Must be running before any pick-and-place action is triggered — the control node blocks on <code>/gripper/status</code> after every command.</em></p>
+
+          <h4 class="title is-5 reveal" style="--delay:0.93s">Optional — Test a wall pickup slot</h4>
+<pre class="code-card reveal" style="--delay:0.95s">ros2 topic pub --once /quoridor/test_wall_pickup std_msgs/msg/Int32 "{data: 1}"</pre>
+          <p class="reveal" style="--delay:0.96s; margin-bottom:1.5rem; color:var(--muted-soft);"><em>Drives the arm to wall rack slot 1–4 without a full game action — useful for verifying joint configs before a match.</em></p>
+
+          <div class="repo-button-row reveal" style="--delay:1.0s; margin-top:2rem;">
+            <a href="https://github.com/BinethAtukorala/RS2-Quoridor/tree/main/control" class="button is-rounded is-dark is-medium">
+              <span class="icon"><i class="fab fa-github"></i></span>
+              <span>View robot motion control code</span>
+            </a>
+          </div>
+        </div>
+      </div>
+
+      <!-- Motion: Demo Video -->
+      <h3 class="title is-4 has-text-centered reveal" style="margin-top:3rem; --delay:1.05s">Gameplay between human and robot</h3>
+      <div class="columns is-centered reveal" style="--delay:1.1s">
+        <div class="column is-four-fifths">
+          <div class="publication-video">
+            <iframe src="https://www.youtube.com/embed/dQw4w9WgXcQ"
+                    title="Robot motion control demonstration"
+                    frameborder="0"
+                    allow="autoplay; encrypted-media; picture-in-picture"
+                    referrerpolicy="strict-origin-when-cross-origin"
+                    allowfullscreen></iframe>
+          </div>
+          <p class="has-text-centered" style="margin-top:0.75rem; opacity:0.7;">
+            <em>Full pick-and-place execution - pawn and wall moves with gripper.</em>
+          </p>
+        </div>
+      </div>
+
+    </div><!-- /panel-motion -->
+
   </div>
 </section>
 
