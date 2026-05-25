@@ -32,6 +32,7 @@
       <a class="navbar-item" href="#results">Results</a>
       <a class="navbar-item" href="#benchmarks">Benchmarks</a>
       <a class="navbar-item" href="#code">Code</a>
+      <a class="navbar-item" href="#robotic-system">Robotic System</a>
     </div>
   </div>
 </nav>
@@ -150,7 +151,7 @@
           <p class="team-role">AI / AlphaZero (QuorZero)</p>
           <p class="team-desc">
             Designed and implemented the AlphaZero pipeline: dual-head network, Monte-Carlo Tree Search, 
-            self-play loop, and the ROS 2 inference node.
+            self-play loop, ROS 2 inference node, and both GUI and CLI interfaces for interaction and testing.
           </p>
         </div>
       </div>
@@ -160,8 +161,9 @@
           <h3 class="team-name">Bihan Sudusinghe</h3>
           <p class="team-role">DQN Model</p>
           <p class="team-desc">
-            Built the initial DQN model used as the comparison point, same encoder and action space,
-            different learning algorithm trained against minimax algorithm.
+            Built the initial DQN model, same encoder and action space, 
+            different learning algorithm trained against minimax algorithm, helped test QuorZero, and 
+            improved QuorZero training performance by over 200% by fixing multiprocessing bugs. Built the perception subsystem.
           </p>
         </div>
       </div>
@@ -171,8 +173,8 @@
           <h3 class="team-name">Binada Sudusinghe</h3>
           <p class="team-role">Benchmarking &amp; Evaluation</p>
           <p class="team-desc">
-            Designed the head-to-head benchmark system comparing QuorZero against the DQN engine
-            and a minimax engine, and analysed the resulting win-rate / game-length statistics.
+            Designed the QuorZero benchmarking system against DQN and minimax, trained/evaluated both models,
+            and fixed DQN bugs to improve performance and reduce repeated gameplay. Built the robot motion control subsystem.
           </p>
         </div>
       </div>
@@ -183,7 +185,7 @@
 <!-- ============ VIDEO ============ -->
 <section class="section section-alt" id="demo">
   <div class="container is-max-desktop">
-    <h2 class="title is-3 has-text-centered reveal">Demonstration</h2>
+    <h2 class="title is-3 has-text-centered reveal">Final Video Demonstration</h2>
     <div class="columns is-centered">
       <div class="column is-four-fifths reveal" style="--delay:0.1s">
         <div class="publication-video">
@@ -502,7 +504,7 @@ push every (state, π, z) into ReplayBuffer</pre>
 <!-- ============ CODE ============ -->
 <section class="section" id="code">
   <div class="container is-max-desktop">
-    <h2 class="title is-3 has-text-centered reveal">Code &amp; Installation</h2>
+    <h2 class="title is-3 has-text-centered reveal">QuorZero: Code &amp; Installation</h2>
     <div class="columns is-centered">
       <div class="column is-four-fifths">
         <div class="content reveal" style="--delay:0.1s">
@@ -542,6 +544,196 @@ source install/setup.bash</pre>
     </div>
   </div>
 </section>
+
+<!-- ============ ROBOTIC SYSTEM ============ -->
+<section class="section section-alt" id="robotic-system">
+  <div class="container is-max-desktop">
+    <h2 class="title is-3 has-text-centered reveal">Robotic System</h2>
+    <p class="has-text-centered reveal" style="--delay:0.05s; margin-bottom: 3rem; color: var(--muted-soft);">
+      The physical layer of the Quoridor robot — from camera pixels to gripper contact.
+    </p>
+
+    <!-- Tab-style sub-nav -->
+    <div class="tabs is-centered is-medium reveal" style="--delay:0.1s; margin-bottom: 2.5rem;">
+      <ul>
+        <li class="is-active" id="tab-perception" onclick="switchTab('perception')"><a>Perception</a></li>
+        <li id="tab-motion" onclick="switchTab('motion')"><a>Robot Motion Control</a></li>
+      </ul>
+    </div>
+
+    <!-- ====== PERCEPTION PANEL ====== -->
+    <div id="panel-perception">
+
+      <div class="columns is-centered has-text-centered">
+        <div class="column is-four-fifths">
+          <div class="content has-text-justified reveal" style="--delay:0.15s">
+            <p>
+              The perception subsystem uses RGB and depth video from an <strong>Intel RealSense D435i</strong>
+              depth camera mounted eye-in-hand on the UR3e end-effector. It produces a live digital
+              board state — pawn occupancy on a 5×5 grid and wall placement on a 4×4 grid — along with
+              3D world coordinates for every detected piece, which the motion planning layer consumes directly.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Three-node architecture -->
+      <h3 class="title is-4 has-text-centered reveal" style="margin-top:2rem; --delay:0.2s">Node Architecture</h3>
+      <div class="columns is-multiline reveal" style="--delay:0.25s">
+        <div class="column is-one-third">
+          <div class="metric-card">
+            <h4><code>camera_node</code></h4>
+            <p>Captures RGB and depth streams at 640×480 @ 15 FPS. Supports both live camera input and pre-recorded ROS bag playback for repeatable testing. Saves camera intrinsics to <code>camera_intrinsics.json</code> on first run and exposes <code>/get_pawns</code> and <code>/get_walls</code> ROS 2 services.</p>
+          </div>
+        </div>
+        <div class="column is-one-third">
+          <div class="metric-card">
+            <h4><code>perception_node</code></h4>
+            <p>Core detection node. Applies a homography transform to produce a fixed 500×500 top-down view, then detects pawns via binary thresholding on the warped image and walls via HSV red-colour segmentation. Publishes board state, wall state, 3D coordinates, and both AR and top-down visualisation streams at 10 Hz.</p>
+          </div>
+        </div>
+        <div class="column is-one-third">
+          <div class="metric-card">
+            <h4><code>coordinate_node</code></h4>
+            <p>One-shot calibration node. Detects all 25 pawn grid positions and 16 wall circle positions, then uses 8 hand-measured corner poses to bilinearly interpolate calibrated 3D world coordinates for every cell. Writes results to <code>pawn_coords.txt</code> and <code>wall_coords.txt</code> and shuts down.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Detection pipeline -->
+      <h3 class="title is-4 has-text-centered reveal" style="margin-top:2.5rem; --delay:0.3s">Detection Pipeline</h3>
+      <div class="columns is-vcentered reveal" style="--delay:0.35s">
+        <div class="column is-half">
+          <div class="content has-text-justified">
+            <p><strong>Board localisation</strong> uses Canny edge detection with CLAHE contrast normalisation, followed by contour finding and a 4-point homography warp. This produces a lighting-invariant top-down view regardless of camera angle.</p>
+            <p><strong>Pawn detection</strong> applies binary thresholding on the warped grayscale image. Each of the 25 grid cells is sampled; a cell is marked occupied when &gt;5% of its central ROI is dark.</p>
+            <p><strong>Wall detection</strong> segments red blobs in HSV space using a two-range mask (hue wraps at 180°), then classifies each blob as horizontal or vertical based on its bounding-box aspect ratio.</p>
+            <p><strong>3D localisation</strong> back-projects detected pixel centres through the RealSense depth frame using the camera intrinsics to produce (x, y, z) in the robot's coordinate frame, with ~0–2 cm accuracy after grid-based correction.</p>
+          </div>
+        </div>
+        <div class="column is-half">
+<pre class="code-card" style="font-size:0.78rem">
+# Board detection (perception_node.py)
+gray  = clahe.apply(cv2.cvtColor(img, BGR2GRAY))
+edges = cv2.Canny(GaussianBlur(gray), 50, 150)
+→ find largest 4-point contour
+→ getPerspectiveTransform → 500×500 top-down
+
+# Pawn detection
+_, mask = cv2.threshold(gray, 70, 255, BINARY_INV)
+for each of 25 cells:
+    if countNonZero(roi) / 1600 > 0.05:
+        grid_state[r, c] = 1   # occupied
+
+# Wall detection
+red = inRange(hsv, [0,120,70],[10,255,255])
+     | inRange(hsv, [170,120,70],[180,255,255])
+for contour with area > 2000 px²:
+    orient = "horiz" if w > h else "vert"
+    wall_circles[r, c] = 2 if horiz else 1
+</pre>
+        </div>
+      </div>
+
+      <!-- Published topics -->
+      <h3 class="title is-4 has-text-centered reveal" style="margin-top:2.5rem; --delay:0.4s">Published Topics</h3>
+      <div class="columns is-multiline reveal" style="--delay:0.45s">
+        <div class="column is-half">
+          <div class="metric-card">
+            <h4>/perception/board_state</h4>
+            <p class="metric-range">Int32MultiArray — 5×5</p>
+            <p>Flattened pawn occupancy grid. <code>1</code> = occupied, <code>0</code> = empty. Consumed by game logic and the control node's board-detection check.</p>
+          </div>
+        </div>
+        <div class="column is-half">
+          <div class="metric-card">
+            <h4>/perception/wall_state</h4>
+            <p class="metric-range">Int32MultiArray — 4×4</p>
+            <p>Wall placement and orientation. <code>0</code> = empty, <code>1</code> = vertical wall, <code>2</code> = horizontal wall.</p>
+          </div>
+        </div>
+        <div class="column is-half">
+          <div class="metric-card">
+            <h4>/perception/pawns_3d &amp; /perception/walls_inside_3d</h4>
+            <p class="metric-range">Float32MultiArray</p>
+            <p>3D world coordinates (row, col, x, y, z) for every detected pawn and on-board wall. Lookup values come from the calibrated coordinate files.</p>
+          </div>
+        </div>
+        <div class="column is-half">
+          <div class="metric-card">
+            <h4>/perception/augmented_reality &amp; /perception/topdown</h4>
+            <p class="metric-range">sensor_msgs/Image</p>
+            <p>Live camera feed with AR overlays (bounding boxes, orientation markers, board outline) and the warped 500×500 top-down view — both streamed at 10 Hz for real-time monitoring.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Perception: Code & Installation -->
+      <h3 class="title is-4 has-text-centered reveal" style="margin-top:2.5rem; --delay:0.5s">Code &amp; Installation</h3>
+      <div class="columns is-centered">
+        <div class="column is-four-fifths">
+          <div class="content reveal" style="--delay:0.55s">
+            <p>The perception subsystem lives in the <code>perception</code> ROS 2 package in the project repository. All three nodes are built together.</p>
+          </div>
+
+          <h4 class="title is-5 reveal" style="--delay:0.58s">Build</h4>
+<pre class="code-card reveal" style="--delay:0.60s">cd ~/rs2_ws
+colcon build --packages-select perception --symlink-install
+source install/setup.bash</pre>
+
+          <h4 class="title is-5 reveal" style="--delay:0.63s">Step 1 — Calibration (one-shot)</h4>
+<pre class="code-card reveal" style="--delay:0.65s">ros2 run perception coordinate_node</pre>
+          <p class="reveal" style="--delay:0.66s; margin-bottom:1.5rem; color:var(--muted-soft);"><em>Detects all 25 grids and 16 circles, writes calibrated coordinates to disk, then shuts down automatically. Does not require <code>camera_node</code> to be running simultaneously.</em></p>
+
+          <h4 class="title is-5 reveal" style="--delay:0.68s">Step 2 — Camera node (live)</h4>
+<pre class="code-card reveal" style="--delay:0.70s">ros2 run perception camera_node</pre>
+
+          <h4 class="title is-5 reveal" style="--delay:0.73s">Step 2 (alternative) — Camera node (rosbag playback)</h4>
+<pre class="code-card reveal" style="--delay:0.75s">ros2 run perception camera_node --ros-args -p bag_file:=&lt;path_to_bag&gt;</pre>
+
+          <h4 class="title is-5 reveal" style="--delay:0.78s">Step 3 — Perception node</h4>
+<pre class="code-card reveal" style="--delay:0.80s">ros2 run perception perception_node</pre>
+
+          <div class="repo-button-row reveal" style="--delay:0.85s; margin-top:2rem;">
+            <a href="https://github.com/BinethAtukorala/RS2-Quoridor/tree/main/perception" class="button is-rounded is-dark is-medium">
+              <span class="icon"><i class="fab fa-github"></i></span>
+              <span>View perception code</span>
+            </a>
+          </div>
+        </div>
+      </div>
+
+      <!-- Perception: Demo Video -->
+      <h3 class="title is-4 has-text-centered reveal" style="margin-top:3rem; --delay:0.9s">Perception's Augmented Reality overlay</h3>
+      <div class="columns is-centered reveal" style="--delay:0.95s">
+        <div class="column is-four-fifths">
+          <div class="publication-video">
+            <iframe src="https://www.youtube.com/embed/dQw4w9WgXcQ"
+                    title="Perception subsystem demonstration"
+                    frameborder="0"
+                    allow="autoplay; encrypted-media; picture-in-picture"
+                    referrerpolicy="strict-origin-when-cross-origin"
+                    allowfullscreen></iframe>
+          </div>
+          <p class="has-text-centered" style="margin-top:0.75rem; opacity:0.7;">
+            <em>Live board detection, AR overlay, and real-time board state output.</em>
+          </p>
+        </div>
+      </div>
+
+    </div><!-- /panel-perception -->
+
+  </div>
+</section>
+
+<script>
+function switchTab(tab) {
+  document.getElementById('panel-perception').style.display = tab === 'perception' ? '' : 'none';
+  document.getElementById('panel-motion').style.display     = tab === 'motion'     ? '' : 'none';
+  document.getElementById('tab-perception').className = tab === 'perception' ? 'is-active' : '';
+  document.getElementById('tab-motion').className     = tab === 'motion'     ? 'is-active' : '';
+}
+</script>
 
 <footer class="footer">
   <div class="container">
