@@ -6,6 +6,7 @@ A self-play reinforcement learning engine that learns Quoridor from scratch usin
 
 [![Code](https://img.shields.io/badge/GitHub-quoridor__alphazero-black?logo=github)](https://github.com/BinethAtukorala/RS2-Quoridor/tree/integration/quoridor_alphazero)
 [![Full Repo](https://img.shields.io/badge/GitHub-full%20repository-black?logo=github)](https://github.com/BinethAtukorala/RS2-Quoridor)
+[![Portfolio](https://img.shields.io/badge/Portfolio-QuorZero-gold?logo=github)](https://binethatukorala.github.io/RS2-Quoridor/)
 
 | | |
 |---|---|
